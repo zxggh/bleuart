@@ -215,7 +215,7 @@ class ConsoleFragment : Fragment() {
         rxBytesTotal += rx.bytes.size
         if (rxLineStartTs == 0L) rxLineStartTs = rx.timestamp
         rxLineBuffer.write(rx.bytes)
-        processRxBuffer()
+        processRxBuffer(rx.timestamp)
         // 数据停顿后提交未换行的部分,保证无换行数据(二进制/Modbus)也能实时显示
         flushHandler.removeCallbacks(flushRunnable)
         flushHandler.postDelayed(flushRunnable, RX_LINE_IDLE_MS)
@@ -224,7 +224,7 @@ class ConsoleFragment : Fragment() {
     }
 
     /** 处理缓冲中的完整行(按 \n 切分);剩余未换行部分保留在缓冲 */
-    private fun processRxBuffer() {
+    private fun processRxBuffer(ts: Long) {
         if (rxLineBuffer.size() == 0) return
         val buf = rxLineBuffer.toByteArray()
         var lastNl = -1
@@ -242,9 +242,9 @@ class ConsoleFragment : Fragment() {
             val rest = buf.copyOfRange(lastNl + 1, buf.size)
             rxLineBuffer.reset()
             if (rest.isNotEmpty()) rxLineBuffer.write(rest)
-            rxLineStartTs = if (rest.isNotEmpty()) rx.timestamp else 0L
+            rxLineStartTs = if (rest.isNotEmpty()) ts else 0L
             // 剩余部分可能还包含多行,继续处理
-            if (rest.isNotEmpty()) processRxBuffer()
+            if (rest.isNotEmpty()) processRxBuffer(ts)
         } else if (buf.size >= MAX_LINE_BYTES) {
             // 超长无换行数据:直接提交为一行
             flushPendingRxLine()

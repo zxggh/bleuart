@@ -48,8 +48,8 @@ sealed class DisplayItem {
 }
 
 /**
- * 调试页:连接状态、接收区(HEX/文本 + 接收编码 + 时间戳 + 收发颜色区分)、
- * 发送区(HEX/文本 + 发送编码 + 行尾 + 定时发送 + 历史记录)、BLE 设置(自定义 UUID + MTU)。
+ * 调试页:连接状态、接收区(HEX/ASCII 下拉 + 接收编码 + 时间戳 + 收发颜色区分)、
+ * 发送区(HEX/ASCII 下拉 + 发送编码 + 行尾 + 定时发送 + 历史记录)、BLE 设置(自定义 UUID + MTU)。
  *
  * 接收采用"行缓冲"渲染:BLE 分包到达的通知先合并进当前行,遇到换行(或超长)
  * 才提交为一行,避免一条回复被拆成多行;未暂停时始终自动滚动到最后一行。
@@ -91,20 +91,14 @@ class ConsoleFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         historyRepo = SendHistoryRepository(requireContext())
 
-        // 接收格式
-        binding.toggleRxFormat.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
-            rxFormatHex = checkedId == R.id.rxHex
+        // 接收/发送格式(HEX/ASCII 下拉,默认 HEX)
+        rxFormatHex = setupFormatSpinner(binding.spRxFormat, KEY_FORMAT_RX, defaultHex = true) { hex ->
+            rxFormatHex = hex
             renderFromQueue()
         }
-        binding.toggleRxFormat.check(R.id.rxHex)
-
-        // 发送格式
-        binding.toggleTxFormat.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
-            txFormatHex = checkedId == R.id.txHex
+        txFormatHex = setupFormatSpinner(binding.spTxFormat, KEY_FORMAT_TX, defaultHex = true) { hex ->
+            txFormatHex = hex
         }
-        binding.toggleTxFormat.check(R.id.txHex)
 
         // 接收编码 / 发送编码(独立)
         rxCharset = setupCharsetSpinner(binding.spCharset, KEY_CHARSET_RX)
@@ -129,6 +123,29 @@ class ConsoleFragment : Fragment() {
         binding.etInterval.doAfterTextChanged { if (binding.cbLoop.isChecked) restartLoop() }
 
         updateConnectionUi(ConnectionManager.state)
+    }
+
+    /** 初始化格式下拉框(HEX/ASCII),返回当前是否为 HEX */
+    private fun setupFormatSpinner(spinner: Spinner, prefsKey: String, defaultHex: Boolean, onSelect: (Boolean) -> Unit): Boolean {
+        val options = arrayOf(getString(R.string.format_hex), getString(R.string.format_text))
+        spinner.adapter = ArrayAdapter(
+            requireContext(), android.R.layout.simple_spinner_item, options
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val savedHex = requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .getInt(prefsKey, if (defaultHex) 0 else 1) == 0
+        spinner.setSelection(if (savedHex) 0 else 1)
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
+                    .edit().putInt(prefsKey, position).apply()
+                onSelect(position == 0)
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        return savedHex
     }
 
     /** 初始化编码下拉框,返回当前选中的编码 */
@@ -489,6 +506,8 @@ class ConsoleFragment : Fragment() {
         private const val MAX_LINE_BYTES = 4096
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
+        private const val KEY_FORMAT_RX = "format_rx"
+        private const val KEY_FORMAT_TX = "format_tx"
         private const val KEY_CHARSET_RX = "charset_rx"
         private const val KEY_CHARSET_TX = "charset_tx"
     }

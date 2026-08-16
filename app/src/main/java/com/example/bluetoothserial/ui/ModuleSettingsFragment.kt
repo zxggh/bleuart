@@ -32,8 +32,8 @@ import kotlinx.coroutines.launch
  * - 透传模式: 启用 fff1 通知 + fff2 写入,关闭 fff3(连接后默认);
  * - 设置模式: 关闭 fff1/fff2,启用 fff3 写入 + 通知(空中配置通道)。
  * 进入设置模式后 App 自动发送认证指令 at+auth=123456,认证成功后自动查询
- * at+baud? / at+pari? 并显示当前串口信息(如 115200,8,1,无校验);
- * 波特率设置成功后再自动回读并刷新显示。返回透传模式不断开连接,仅提示手动重启模块。
+ * at+baud? / at+pari? 并显示当前串口信息(如 115200,8,1,无校验)。
+ * 波特率设置成功后: 立即用所选值刷新显示,再自动回读模块确认并更新。
  */
 class ModuleSettingsFragment : Fragment() {
 
@@ -56,6 +56,7 @@ class ModuleSettingsFragment : Fragment() {
     private var pending = Pending.NONE
     private val replyBuffer = StringBuilder()
     private var timeoutJob: Job? = null
+    private var currentParity = "无校验"
 
     private val stateListener: (ConnState) -> Unit = { refreshStatus() }
     private val modeListener: (ModuleMode) -> Unit = { onModeChanged(it) }
@@ -169,6 +170,10 @@ class ModuleSettingsFragment : Fragment() {
             delay(REPLY_TIMEOUT_MS)
             if (pending == type) {
                 pending = Pending.NONE
+                // 回读步骤超时时也刷新一次显示,避免信息停留在旧值
+                if (type == Pending.BAUD_QUERY || type == Pending.PARI_QUERY) {
+                    showUartInfo(currentParity, toast = false)
+                }
                 Toast.makeText(requireContext(), R.string.module_reply_timeout, Toast.LENGTH_SHORT).show()
             }
         }
@@ -235,7 +240,8 @@ class ModuleSettingsFragment : Fragment() {
             Pending.BAUD_SET -> {
                 pending = Pending.NONE
                 Toast.makeText(requireContext(), R.string.module_baud_set_ok, Toast.LENGTH_SHORT).show()
-                // 设置成功后自动回读波特率并刷新当前串口信息
+                // 立即用所选值刷新显示(无需等待模块),再自动回读确认
+                showUartInfo(currentParity, toast = false)
                 sendAt("at+baud?", Pending.BAUD_QUERY)
             }
             Pending.CMD -> {
@@ -266,12 +272,15 @@ class ModuleSettingsFragment : Fragment() {
         }
     }
 
-    private fun showUartInfo(parity: String) {
+    private fun showUartInfo(parity: String, toast: Boolean = true) {
+        currentParity = parity
         val sel = binding.spBaud.selectedItemPosition.coerceIn(0, baudList.size - 1)
         val info = "${baudList[sel].bps},8,1,$parity"
         val text = getString(R.string.module_uart_info_label) + "：" + info
         binding.tvModuleUartInfo.text = text
-        Toast.makeText(requireContext(), text, Toast.LENGTH_LONG).show()
+        if (toast) {
+            Toast.makeText(requireContext(), text, Toast.LENGTH_LONG).show()
+        }
     }
 
     /** 错误代码 -> 含义(数据手册 6.2 错误代码表) */

@@ -95,33 +95,10 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:id="@+id/toggleRxFormat"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                app:selectionRequired="true"
-                app:singleSelection="true">
-
-                <Button
-                    android:id="@+id/rxHex"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:minWidth="0dp"
-                    android:paddingStart="8dp"
-                    android:paddingEnd="8dp"
-                    android:text="@string/format_hex" />
-
-                <Button
-                    android:id="@+id/rxAscii"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:minWidth="0dp"
-                    android:paddingStart="8dp"
-                    android:paddingEnd="8dp"
-                    android:text="@string/format_text" />
-            </com.google.android.material.button.MaterialButtonToggleGroup>
+            <Spinner
+                android:id="@+id/spRxFormat"
+                android:layout_width="76dp"
+                android:layout_height="wrap_content" />
 
             <Spinner
                 android:id="@+id/spCharset"
@@ -152,13 +129,13 @@
                 android:tint="?attr/colorOnSurface" />
         </LinearLayout>
 
-        <!-- 收发计数(独立整行,避免截断) -->
+        <!-- 收发计数(上下两行,整行显示) -->
         <TextView
             android:id="@+id/tvRxStats"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:maxLines="1"
+            android:maxLines="2"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="11sp"
             tools:ignore="RtlSymmetry" />
@@ -185,7 +162,7 @@
         </ScrollView>
     </LinearLayout>
 
-    <!-- ======== 发送区 ======== -->
+    <!-- ======== 发送区(紧凑,给接收区留出面积) ======== -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -200,8 +177,8 @@
             android:fontFamily="monospace"
             android:hint="@string/send_hint"
             android:inputType="textMultiLine"
-            android:maxLines="4"
-            android:minLines="2" />
+            android:maxLines="3"
+            android:minLines="1" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -210,37 +187,20 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <com.google.android.material.button.MaterialButtonToggleGroup
-                android:id="@+id/toggleTxFormat"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                app:selectionRequired="true"
-                app:singleSelection="true">
-
-                <Button
-                    android:id="@+id/txHex"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:minWidth="0dp"
-                    android:paddingStart="8dp"
-                    android:paddingEnd="8dp"
-                    android:text="@string/format_hex" />
-
-                <Button
-                    android:id="@+id/txAscii"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:minWidth="0dp"
-                    android:paddingStart="8dp"
-                    android:paddingEnd="8dp"
-                    android:text="@string/format_text" />
-            </com.google.android.material.button.MaterialButtonToggleGroup>
+            <Spinner
+                android:id="@+id/spTxFormat"
+                android:layout_width="76dp"
+                android:layout_height="wrap_content" />
 
             <Spinner
                 android:id="@+id/spTxCharset"
                 android:layout_width="82dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp" />
+
+            <Spinner
+                android:id="@+id/spLineEnd"
+                android:layout_width="72dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp" />
 
@@ -265,8 +225,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:minWidth="0dp"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
                 android:text="@string/send" />
         </LinearLayout>
 
@@ -277,16 +237,10 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <Spinner
-                android:id="@+id/spLineEnd"
-                android:layout_width="72dp"
-                android:layout_height="wrap_content" />
-
             <CheckBox
                 android:id="@+id/cbLoop"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
                 android:text="@string/loop_send"
                 android:textSize="13sp" />
 
@@ -294,6 +248,7 @@
                 android:id="@+id/etInterval"
                 android:layout_width="72dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
                 android:inputType="number"
                 android:maxLength="6"
                 android:text="1000"

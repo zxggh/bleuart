@@ -360,12 +360,14 @@ class ConsoleFragment : Fragment() {
         menu.menu.add(0, 2, 1, R.string.clear)
         menu.menu.add(0, 3, 2, R.string.copy)
         menu.menu.add(0, 4, 3, R.string.update_menu)
+        menu.menu.add(0, 5, 4, R.string.update_url_setting)
         menu.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> paused = !paused
                 2 -> clearReceive()
                 3 -> copyReceive()
                 4 -> (activity as? MainActivity)?.checkForUpdates(true)
+                5 -> (activity as? MainActivity)?.showUpdateUrlDialog()
             }
             true
         }

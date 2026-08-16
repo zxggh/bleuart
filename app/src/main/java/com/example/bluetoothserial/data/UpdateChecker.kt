@@ -16,33 +16,41 @@ data class AppUpdate(
 object UpdateChecker {
 
     /**
-     * 更新源地址。
-     * 1) 默认使用 GitHub Releases API:在仓库 Releases 发布新版本并上传 APK 即可,
-     *    版本号用 tag 如 v1.0.1,无需维护版本文件;
-     * 2) 也可改为自建服务器 / Gitee 等平台的 version.json 地址,格式:
-     *    {"versionName":"1.1.0","apkUrl":"https://.../app-debug.apk","notes":"更新说明"}
+     * 默认更新源地址(国内可直接访问)。
+     * 目标用户在国内无代理,默认使用 Gitee(码云) raw 直链:
+     *   https://gitee.com/<用户名>/<仓库名>/raw/<分支>/version.json
+     * 请把下面地址换成你自己的 Gitee 用户名/仓库名,
+     * 或在 App 内「更新地址」设置中直接粘贴完整 URL(保存后立即生效,无需重编译)。
+     *
+     * 支持的两种更新源格式:
+     * 1) 自定义 version.json(默认,推荐国内使用):
+     *    {"versionName":"1.1.0","apkUrl":"https://gitee.com/xxx/bleuart/raw/master/app-debug.apk","notes":"更新说明"}
+     * 2) GitHub Releases API(需要代理):https://api.github.com/repos/<user>/<repo>/releases/latest
+     *    自动从 tag(v1.0.1)与 assets 中解析版本和 APK。
      */
-    const val UPDATE_URL = "https://api.github.com/repos/zxggh/bleuart/releases/latest"
+    const val DEFAULT_UPDATE_URL = "https://gitee.com/zxggh/bleuart/raw/master/version.json"
 
     /**
      * 检查更新。
+     * @param updateUrl 更新源 URL(version.json 或 GitHub Releases API)
      * @param currentVersionName 当前版本号(如 1.0.0)
      * @param onResult (ok=是否成功获取到更新源信息, update=新版本信息,null 表示已是最新)
      *                 在后台线程回调,调用方需自行切回主线程
      */
-    fun check(currentVersionName: String, onResult: (Boolean, AppUpdate?) -> Unit) {
+    fun check(updateUrl: String, currentVersionName: String, onResult: (Boolean, AppUpdate?) -> Unit) {
+        val url = updateUrl.ifBlank { DEFAULT_UPDATE_URL }
         Thread({
             var ok = false
             var update: AppUpdate? = null
             try {
-                val conn = URL(UPDATE_URL).openConnection() as HttpURLConnection
+                val conn = URL(url).openConnection() as HttpURLConnection
                 conn.connectTimeout = 8000
                 conn.readTimeout = 8000
                 conn.requestMethod = "GET"
                 conn.setRequestProperty("User-Agent", "ZxgBluetoothAssistant")
                 if (conn.responseCode == 200) {
                     val body = conn.inputStream.bufferedReader().readText()
-                    update = if (UPDATE_URL.contains("api.github.com")) {
+                    update = if (url.contains("api.github.com")) {
                         parseGitHubRelease(body, currentVersionName)
                     } else {
                         parseCustomVersionJson(body, currentVersionName)

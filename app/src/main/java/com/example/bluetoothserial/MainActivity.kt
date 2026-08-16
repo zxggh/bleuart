@@ -13,6 +13,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -43,7 +45,6 @@ class MainActivity : AppCompatActivity() {
 
     // ---------------- 更新下载 ----------------
     private var downloadId: Long = -1L
-    private var pendingApkUri: Uri? = null
 
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -162,6 +163,12 @@ class MainActivity : AppCompatActivity() {
 
     // ---------------- 更新检查与安装 ----------------
 
+    private fun updatePrefs() = getSharedPreferences("update_prefs", Context.MODE_PRIVATE)
+
+    /** 当前更新源地址(用户在 App 内可改,默认 Gitee) */
+    private fun currentUpdateUrl(): String =
+        updatePrefs().getString("update_url", "").orEmpty().ifBlank { UpdateChecker.DEFAULT_UPDATE_URL }
+
     /**
      * 检查更新。
      * @param manual true=用户手动触发(有过程提示); false=自动检查(仅发现新版本才提示)
@@ -175,7 +182,8 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
             "1.0.0"
         }
-        UpdateChecker.check(current) { ok, update ->
+        val url = currentUpdateUrl()
+        UpdateChecker.check(url, current) { ok, update ->
             runOnUiThread {
                 if (!ok) {
                     if (manual) Toast.makeText(this, R.string.update_fail, Toast.LENGTH_LONG).show()
@@ -191,8 +199,29 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** 设置更新地址(保存后立即生效,无需重新编译) */
+    fun showUpdateUrlDialog() {
+        val et = EditText(this).apply {
+            setText(currentUpdateUrl())
+            hint = "https://gitee.com/用户名/仓库名/raw/master/version.json"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.update_url_setting)
+            .setMessage(R.string.update_url_hint)
+            .setView(et)
+            .setPositiveButton(R.string.save) { _, _ ->
+                val url = et.text?.toString()?.trim().orEmpty()
+                updatePrefs().edit().putString("update_url", url).apply()
+                Toast.makeText(this, R.string.update_url_saved, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun autoCheckUpdate() {
-        val prefs = getSharedPreferences("update_prefs", Context.MODE_PRIVATE)
+        val prefs = updatePrefs()
         val last = prefs.getLong("last_check", 0L)
         val now = System.currentTimeMillis()
         if (now - last < 24 * 3600 * 1000L) return

@@ -171,4 +171,7 @@
     <string name="update_permission_msg">安装应用需要先授予「安装未知应用」权限</string>
     <string name="update_permission_goto">去授权</string>
     <string name="update_downloading">开始下载新版本,完成后会自动提示安装</string>
+    <string name="update_url_setting">更新地址</string>
+    <string name="update_url_hint">填写 version.json 的完整 URL(留空则使用默认 Gitee 地址)。\n例: https://gitee.com/用户名/仓库名/raw/master/version.json</string>
+    <string name="update_url_saved">更新地址已保存</string>
 </resources>

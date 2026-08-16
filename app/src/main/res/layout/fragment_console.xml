@@ -57,7 +57,7 @@
             android:minWidth="0dp"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
-            android:text="@string/uuid_setting" />
+            android:text="@string/ble_setting" />
 
         <Button
             android:id="@+id/btnConnect"
@@ -108,9 +108,9 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:minWidth="0dp"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:text="HEX" />
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="@string/format_hex" />
 
                 <Button
                     android:id="@+id/rxAscii"
@@ -118,16 +118,22 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:minWidth="0dp"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:text="ASCII" />
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="@string/format_text" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
+
+            <Spinner
+                android:id="@+id/spCharset"
+                android:layout_width="88dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp" />
 
             <TextView
                 android:id="@+id/tvRxStats"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="4dp"
                 android:layout_weight="1"
                 android:maxLines="1"
                 android:textSize="11sp"
@@ -139,40 +145,16 @@
                 android:layout_height="wrap_content"
                 android:checked="true"
                 android:text="@string/timestamp"
-                android:textSize="13sp" />
+                android:textSize="12sp" />
 
-            <Button
-                android:id="@+id/btnPause"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:minWidth="0dp"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:text="@string/pause"
-                android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/btnClear"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:minWidth="0dp"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:text="@string/clear"
-                android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/btnCopy"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:minWidth="0dp"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:text="@string/copy"
-                android:textSize="13sp" />
+            <ImageButton
+                android:id="@+id/btnMore"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/more_menu"
+                android:src="@drawable/ic_more"
+                android:tint="?attr/colorOnSurface" />
         </LinearLayout>
 
         <ScrollView
@@ -235,9 +217,9 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:minWidth="0dp"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:text="HEX" />
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="@string/format_hex" />
 
                 <Button
                     android:id="@+id/txAscii"
@@ -245,21 +227,31 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:minWidth="0dp"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:text="ASCII" />
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="@string/format_text" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
 
             <Spinner
                 android:id="@+id/spLineEnd"
-                android:layout_width="88dp"
+                android:layout_width="80dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp" />
+                android:layout_marginStart="4dp" />
 
             <Space
                 android:layout_width="0dp"
                 android:layout_height="1dp"
                 android:layout_weight="1" />
+
+            <Button
+                android:id="@+id/btnHistory"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="@string/send_history" />
 
             <Button
                 android:id="@+id/btnSend"

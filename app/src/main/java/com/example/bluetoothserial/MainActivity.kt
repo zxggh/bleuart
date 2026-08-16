@@ -16,6 +16,8 @@ import com.example.bluetoothserial.databinding.ActivityMainBinding
 import com.example.bluetoothserial.ui.CommandFragment
 import com.example.bluetoothserial.ui.ConsoleFragment
 import com.example.bluetoothserial.ui.DeviceFragment
+import com.example.bluetoothserial.ui.ModbusFragment
+import com.example.bluetoothserial.ui.ModuleSettingsFragment
 
 class MainActivity : AppCompatActivity() {
 
@@ -24,6 +26,8 @@ class MainActivity : AppCompatActivity() {
     private var consoleFragment: ConsoleFragment? = null
     private var commandFragment: CommandFragment? = null
     private var deviceFragment: DeviceFragment? = null
+    private var modbusFragment: ModbusFragment? = null
+    private var moduleSettingsFragment: ModuleSettingsFragment? = null
 
     private var pendingPermissionCallback: (() -> Unit)? = null
     private var pendingBluetoothOnCallback: (() -> Unit)? = null
@@ -55,17 +59,25 @@ class MainActivity : AppCompatActivity() {
             consoleFragment = ConsoleFragment()
             commandFragment = CommandFragment()
             deviceFragment = DeviceFragment()
+            modbusFragment = ModbusFragment()
+            moduleSettingsFragment = ModuleSettingsFragment()
             supportFragmentManager.beginTransaction()
                 .add(R.id.container, consoleFragment!!, TAG_CONSOLE)
                 .add(R.id.container, commandFragment!!, TAG_COMMANDS)
                 .add(R.id.container, deviceFragment!!, TAG_DEVICES)
+                .add(R.id.container, modbusFragment!!, TAG_MODBUS)
+                .add(R.id.container, moduleSettingsFragment!!, TAG_SETTINGS)
                 .hide(commandFragment!!)
                 .hide(deviceFragment!!)
+                .hide(modbusFragment!!)
+                .hide(moduleSettingsFragment!!)
                 .commit()
         } else {
             consoleFragment = supportFragmentManager.findFragmentByTag(TAG_CONSOLE) as? ConsoleFragment
             commandFragment = supportFragmentManager.findFragmentByTag(TAG_COMMANDS) as? CommandFragment
             deviceFragment = supportFragmentManager.findFragmentByTag(TAG_DEVICES) as? DeviceFragment
+            modbusFragment = supportFragmentManager.findFragmentByTag(TAG_MODBUS) as? ModbusFragment
+            moduleSettingsFragment = supportFragmentManager.findFragmentByTag(TAG_SETTINGS) as? ModuleSettingsFragment
         }
 
         binding.bottomNav.setOnItemSelectedListener { item ->
@@ -73,15 +85,21 @@ class MainActivity : AppCompatActivity() {
                 R.id.nav_console -> showFragment(consoleFragment)
                 R.id.nav_commands -> showFragment(commandFragment)
                 R.id.nav_devices -> showFragment(deviceFragment)
+                R.id.nav_modbus -> showFragment(modbusFragment)
+                R.id.nav_settings -> showFragment(moduleSettingsFragment)
             }
             true
         }
+
+        // 首次启动主动请求蓝牙权限,避免扫描/连接时再弹
+        binding.root.post { ensureBluetoothPermissions { } }
     }
 
     private fun showFragment(target: Fragment?) {
         if (target == null) return
-        val others = listOfNotNull(consoleFragment, commandFragment, deviceFragment)
-            .filter { it !== target }
+        val others = listOfNotNull(
+            consoleFragment, commandFragment, deviceFragment, modbusFragment, moduleSettingsFragment
+        ).filter { it !== target }
         supportFragmentManager.beginTransaction().apply {
             others.forEach { hide(it) }
             show(target)
@@ -101,7 +119,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * 按系统版本请求蓝牙运行时权限:
      * Android 12+ 需要 BLUETOOTH_SCAN / BLUETOOTH_CONNECT;
-     * Android 11 及以下需要 ACCESS_FINE_LOCATION(BLE 扫描)。
+     * 定位权限全版本请求(部分国产 ROM 在 12+ 仍要求定位才能扫描 BLE)。
      */
     fun ensureBluetoothPermissions(onGranted: () -> Unit) {
         val needed = mutableListOf<String>()
@@ -112,10 +130,9 @@ class MainActivity : AppCompatActivity() {
             if (!hasPermission(Manifest.permission.BLUETOOTH_SCAN)) {
                 needed += Manifest.permission.BLUETOOTH_SCAN
             }
-        } else {
-            if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
-                needed += Manifest.permission.ACCESS_FINE_LOCATION
-            }
+        }
+        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+            needed += Manifest.permission.ACCESS_FINE_LOCATION
         }
         if (needed.isEmpty()) {
             onGranted()
@@ -154,5 +171,7 @@ class MainActivity : AppCompatActivity() {
         private const val TAG_CONSOLE = "console"
         private const val TAG_COMMANDS = "commands"
         private const val TAG_DEVICES = "devices"
+        private const val TAG_MODBUS = "modbus"
+        private const val TAG_SETTINGS = "settings"
     }
 }

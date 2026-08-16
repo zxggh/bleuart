@@ -14,6 +14,7 @@ import com.example.bluetoothserial.data.CustomCommand
 import com.example.bluetoothserial.databinding.DialogCommandEditBinding
 import com.example.bluetoothserial.databinding.FragmentCommandsBinding
 import com.example.bluetoothserial.model.DataFormat
+import com.example.bluetoothserial.model.TextCharset
 import com.example.bluetoothserial.util.HexUtils
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
@@ -79,7 +80,14 @@ class CommandFragment : Fragment() {
 
     private fun buildBytes(cmd: CustomCommand): ByteArray? = when (cmd.format) {
         DataFormat.HEX -> HexUtils.parseHex(cmd.data)
-        DataFormat.ASCII -> cmd.data.toByteArray(Charsets.UTF_8)
+        DataFormat.ASCII -> HexUtils.encode(cmd.data, currentCharset())
+    }
+
+    /** 读取调试页选择的全局编码 */
+    private fun currentCharset(): TextCharset {
+        val name = requireContext().getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
+            .getString("charset", "UTF-8") ?: "UTF-8"
+        return TextCharset.fromName(name)
     }
 
     // ================= 编辑 / 新增 =================

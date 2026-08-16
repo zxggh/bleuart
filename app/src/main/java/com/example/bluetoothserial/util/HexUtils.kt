@@ -1,7 +1,11 @@
 package com.example.bluetoothserial.util
 
+import com.example.bluetoothserial.model.TextCharset
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+
 /**
- * HEX 与 ASCII 转换工具
+ * HEX 与文本转换工具
  */
 object HexUtils {
 
@@ -23,10 +27,7 @@ object HexUtils {
         }
     }
 
-    /**
-     * 字节数组 -> 可读 ASCII 显示文本。
-     * 可打印字符原样显示,\t \r \n 保留,其余不可见字符显示为 '.'。
-     */
+    /** 字节数组 -> 可读显示文本(非打印字节显示为 '.') */
     fun toAsciiDisplay(data: ByteArray): String = buildString {
         for (b in data) {
             val c = b.toInt() and 0xFF
@@ -35,6 +36,30 @@ object HexUtils {
                 in 32..126 -> append(c.toChar())
                 else -> append('.')
             }
+        }
+    }
+
+    /**
+     * 按指定字符集解码字节数组为文本。
+     * 非法字节序列替换为 '�'(REPLACE 策略),不会抛异常。
+     */
+    fun decode(data: ByteArray, charset: TextCharset): String {
+        return try {
+            val decoder = java.nio.charset.Charset.forName(charset.javaName).newDecoder()
+            decoder.onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE)
+                .decode(ByteBuffer.wrap(data)).toString()
+        } catch (_: Exception) {
+            toAsciiDisplay(data)
+        }
+    }
+
+    /** 按指定字符集编码文本为字节数组 */
+    fun encode(text: String, charset: TextCharset): ByteArray {
+        return try {
+            text.toByteArray(java.nio.charset.Charset.forName(charset.javaName))
+        } catch (_: Exception) {
+            text.toByteArray(Charsets.UTF_8)
         }
     }
 }

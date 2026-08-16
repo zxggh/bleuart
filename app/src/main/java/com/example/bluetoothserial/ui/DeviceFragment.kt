@@ -21,12 +21,13 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.bluetoothserial.MainActivity
 import com.example.bluetoothserial.R
-import com.example.bluetoothserial.bt.BleUuidPrefs
 import com.example.bluetoothserial.bt.ConnectionManager
+import com.example.bluetoothserial.data.BleSettingsPrefs
 import com.example.bluetoothserial.databinding.FragmentDevicesBinding
 
 /**
- * 设备页:经典蓝牙 / BLE 扫描与连接
+ * 设备页:经典蓝牙 / BLE 扫描与连接。
+ * 扫描结果高频刷新时合并通知,避免点击丢失。
  */
 class DeviceFragment : Fragment() {
 
@@ -38,6 +39,7 @@ class DeviceFragment : Fragment() {
     private var bleMode = true
     private var scanning = false
     private var classicReceiver: BroadcastReceiver? = null
+    private var refreshScheduled = false
 
     private val leScanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -225,10 +227,25 @@ class DeviceFragment : Fragment() {
         updateScanButtons()
     }
 
+    /** 新增设备立即刷新;已有设备(RSSI 更新)合并刷新,避免高频重建导致点击丢失 */
     private fun addDevice(d: BtDevice) {
         val idx = deviceList.indexOfFirst { it.address == d.address && it.isBle == d.isBle }
-        if (idx >= 0) deviceList[idx] = d else deviceList.add(d)
-        adapter.notifyDataSetChanged()
+        if (idx >= 0) {
+            deviceList[idx] = d
+            scheduleRefresh()
+        } else {
+            deviceList.add(d)
+            adapter.notifyDataSetChanged()
+        }
+    }
+
+    private fun scheduleRefresh() {
+        if (refreshScheduled) return
+        refreshScheduled = true
+        view?.postDelayed({
+            refreshScheduled = false
+            adapter.notifyDataSetChanged()
+        }, 300)
     }
 
     // ================= 连接 =================
@@ -251,8 +268,8 @@ class DeviceFragment : Fragment() {
                 Toast.makeText(requireContext(), msg ?: getString(R.string.conn_failed), Toast.LENGTH_LONG).show()
             }
             if (device.isBle) {
-                val (s, w, n) = BleUuidPrefs.read(requireContext())
-                ConnectionManager.connectBle(requireContext(), dev, s, w, n)
+                val settings = BleSettingsPrefs.load(requireContext())
+                ConnectionManager.connectBle(requireContext(), dev, settings)
             } else {
                 ConnectionManager.connectClassic(dev)
             }

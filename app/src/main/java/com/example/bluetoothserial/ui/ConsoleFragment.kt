@@ -4,10 +4,15 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
@@ -15,13 +20,16 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.example.bluetoothserial.MainActivity
 import com.example.bluetoothserial.R
-import com.example.bluetoothserial.bt.BleUuidPrefs
 import com.example.bluetoothserial.bt.ConnectionManager
 import com.example.bluetoothserial.bt.ConnState
 import com.example.bluetoothserial.bt.ConnType
 import com.example.bluetoothserial.bt.RxData
+import com.example.bluetoothserial.data.BleSettings
+import com.example.bluetoothserial.data.BleSettingsPrefs
+import com.example.bluetoothserial.data.SendHistoryRepository
 import com.example.bluetoothserial.databinding.DialogUuidBinding
 import com.example.bluetoothserial.databinding.FragmentConsoleBinding
+import com.example.bluetoothserial.model.TextCharset
 import com.example.bluetoothserial.util.HexUtils
 import com.example.bluetoothserial.util.TimeFormat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -31,23 +39,31 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+/** 接收区显示条目:区分发送(TX)与接收(RX) */
+sealed class DisplayItem {
+    data class Rx(val rx: RxData) : DisplayItem()
+    data class Tx(val bytes: ByteArray, val ts: Long, val hex: Boolean, val charset: String) : DisplayItem()
+}
+
 /**
- * 调试页:连接状态、接收区(HEX/ASCII + 时间戳)、发送区(HEX/ASCII + 行尾 + 定时发送)
+ * 调试页:连接状态、接收区(HEX/文本 + 编码 + 时间戳 + 收发颜色区分)、
+ * 发送区(HEX/文本 + 行尾 + 定时发送 + 历史记录)、BLE 设置(自定义 UUID + MTU)
  */
 class ConsoleFragment : Fragment() {
 
     private var _binding: FragmentConsoleBinding? = null
     private val binding get() = _binding!!
 
-    // 接收缓冲
-    private val rxQueue = ArrayDeque<RxData>()
-    private val logBuffer = StringBuilder()
+    private val displayQueue = ArrayDeque<DisplayItem>()
+    private val logBuilder = SpannableStringBuilder()
     private var rxBytesTotal = 0L
     private var rxChunks = 0L
     private var rxFormatHex = true
     private var txFormatHex = true
     private var paused = false
     private var loopJob: Job? = null
+    private var charset: TextCharset = TextCharset.UTF8
+    private lateinit var historyRepo: SendHistoryRepository
 
     private val lineEndingLabels = arrayOf("无", "\\r", "\\n", "\\r\\n")
     private val lineEndingValues = arrayOf("", "\r", "\n", "\r\n")
@@ -62,7 +78,9 @@ class ConsoleFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        historyRepo = SendHistoryRepository(requireContext())
 
+        // 接收格式
         binding.toggleRxFormat.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             rxFormatHex = checkedId == R.id.rxHex
@@ -70,11 +88,36 @@ class ConsoleFragment : Fragment() {
         }
         binding.toggleRxFormat.check(R.id.rxHex)
 
+        // 发送格式
         binding.toggleTxFormat.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             txFormatHex = checkedId == R.id.txHex
         }
         binding.toggleTxFormat.check(R.id.txHex)
+
+        // 字符编码(收发共用)
+        val charsetEntries = TextCharset.entries
+        binding.spCharset.adapter = ArrayAdapter(
+            requireContext(), android.R.layout.simple_spinner_item, charsetEntries.map { it.label }
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val savedCharset = TextCharset.fromName(
+            requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
+                .getString("charset", "UTF-8") ?: "UTF-8"
+        )
+        charset = savedCharset
+        binding.spCharset.setSelection(charsetEntries.indexOfFirst { it == savedCharset }.coerceAtLeast(0))
+        binding.spCharset.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                charset = charsetEntries[position]
+                requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
+                    .edit().putString("charset", charset.javaName).apply()
+                renderFromQueue()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
 
         binding.spLineEnd.adapter = ArrayAdapter(
             requireContext(), android.R.layout.simple_spinner_item, lineEndingLabels
@@ -83,15 +126,11 @@ class ConsoleFragment : Fragment() {
         }
 
         binding.btnSend.setOnClickListener { sendInput() }
-        binding.btnClear.setOnClickListener { clearReceive() }
-        binding.btnCopy.setOnClickListener { copyReceive() }
-        binding.btnPause.setOnClickListener {
-            paused = !paused
-            binding.btnPause.text = if (paused) getString(R.string.resume) else getString(R.string.pause)
-        }
+        binding.btnHistory.setOnClickListener { showHistoryDialog() }
+        binding.btnMore.setOnClickListener { showMoreMenu() }
         binding.btnDisconnect.setOnClickListener { ConnectionManager.disconnect() }
         binding.btnConnect.setOnClickListener { (activity as? MainActivity)?.switchToDevices() }
-        binding.btnUuidSetting.setOnClickListener { showUuidDialog() }
+        binding.btnUuidSetting.setOnClickListener { showBleSettingsDialog() }
 
         binding.cbLoop.setOnCheckedChangeListener { _, checked ->
             if (checked) restartLoop() else stopLoop()
@@ -104,8 +143,7 @@ class ConsoleFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         ConnectionManager.addStateListener(stateListener)
-        // 页面重建(如旋转屏幕)时回放最近接收的数据
-        ConnectionManager.addDataListener(dataListener, replayPending = rxQueue.isEmpty())
+        ConnectionManager.addDataListener(dataListener, replayPending = displayQueue.isEmpty())
     }
 
     override fun onPause() {
@@ -159,38 +197,60 @@ class ConsoleFragment : Fragment() {
     // ================= 接收 =================
 
     private fun appendReceived(rx: RxData) {
-        rxQueue.addLast(rx)
+        displayQueue.addLast(DisplayItem.Rx(rx))
+        while (displayQueue.size > 5000) displayQueue.removeFirst()
         rxChunks++
         rxBytesTotal += rx.bytes.size
-        while (rxQueue.size > 5000) rxQueue.removeFirst()
 
-        logBuffer.append(formatLine(rx))
+        logBuilder.append(renderRx(rx))
         trimLog()
-        binding.tvReceive.text = logBuffer.toString()
+        binding.tvReceive.text = logBuilder
         binding.tvRxStats.text = getString(R.string.rx_stats, rxBytesTotal, rxChunks)
         autoScroll()
     }
 
-    private fun formatLine(rx: RxData): String {
-        val head = if (binding.cbTimestamp.isChecked) "[${TimeFormat.stamp(rx.timestamp)}] " else ""
-        val body = if (rxFormatHex) HexUtils.toHex(rx.bytes) else HexUtils.toAsciiDisplay(rx.bytes)
-        return head + body + "\n"
+    /** 发送回显(TX 蓝色) */
+    private fun renderTx(tx: DisplayItem.Tx): SpannableStringBuilder {
+        val sb = SpannableStringBuilder()
+        val head = if (binding.cbTimestamp.isChecked) "[${TimeFormat.stamp(tx.ts)}] TX> " else "TX> "
+        val body = if (tx.hex) HexUtils.toHex(tx.bytes) else HexUtils.decode(tx.bytes, TextCharset.fromName(tx.charset))
+        sb.append(head).append(body).append("\n")
+        if (sb.length > 1) {
+            sb.setSpan(ForegroundColorSpan(TX_COLOR), 0, sb.length - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return sb
     }
 
-    /** 切换显示格式 / 时间戳后,按当前设置重建整个接收区 */
+    /** 接收行(RX 绿色) */
+    private fun renderRx(rx: RxData): SpannableStringBuilder {
+        val sb = SpannableStringBuilder()
+        val head = if (binding.cbTimestamp.isChecked) "[${TimeFormat.stamp(rx.timestamp)}] RX< " else "RX< "
+        val body = if (rxFormatHex) HexUtils.toHex(rx.bytes) else HexUtils.decode(rx.bytes, charset)
+        sb.append(head).append(body).append("\n")
+        if (sb.length > 1) {
+            sb.setSpan(ForegroundColorSpan(RX_COLOR), 0, sb.length - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return sb
+    }
+
+    /** 切换格式/编码/时间戳后重建整个显示区 */
     private fun renderFromQueue() {
-        logBuffer.setLength(0)
-        rxQueue.forEach { logBuffer.append(formatLine(it)) }
+        logBuilder.setLength(0)
+        displayQueue.forEach {
+            when (it) {
+                is DisplayItem.Rx -> logBuilder.append(renderRx(it.rx))
+                is DisplayItem.Tx -> logBuilder.append(renderTx(it))
+            }
+        }
         trimLog()
-        binding.tvReceive.text =
-            if (logBuffer.isEmpty()) getString(R.string.receive_placeholder) else logBuffer.toString()
+        binding.tvReceive.text = if (logBuilder.isEmpty()) getString(R.string.receive_placeholder) else logBuilder
         binding.tvRxStats.text = getString(R.string.rx_stats, rxBytesTotal, rxChunks)
         autoScroll(force = true)
     }
 
     private fun trimLog() {
-        if (logBuffer.length > MAX_LOG_CHARS) {
-            logBuffer.delete(0, logBuffer.length - MAX_LOG_CHARS)
+        if (logBuilder.length > MAX_LOG_CHARS) {
+            logBuilder.delete(0, logBuilder.length - MAX_LOG_CHARS)
         }
     }
 
@@ -205,8 +265,8 @@ class ConsoleFragment : Fragment() {
     }
 
     private fun clearReceive() {
-        rxQueue.clear()
-        logBuffer.setLength(0)
+        displayQueue.clear()
+        logBuilder.setLength(0)
         rxBytesTotal = 0
         rxChunks = 0
         binding.tvReceive.text = getString(R.string.receive_placeholder)
@@ -224,6 +284,26 @@ class ConsoleFragment : Fragment() {
         Toast.makeText(requireContext(), R.string.copied, Toast.LENGTH_SHORT).show()
     }
 
+    // ================= 更多菜单(暂停/清屏/复制) =================
+
+    private fun showMoreMenu() {
+        val menu = PopupMenu(requireContext(), binding.btnMore)
+        menu.menu.add(0, 1, 0, if (paused) R.string.resume else R.string.pause)
+        menu.menu.add(0, 2, 1, R.string.clear)
+        menu.menu.add(0, 3, 2, R.string.copy)
+        menu.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                1 -> {
+                    paused = !paused
+                }
+                2 -> clearReceive()
+                3 -> copyReceive()
+            }
+            true
+        }
+        menu.show()
+    }
+
     // ================= 发送 =================
 
     private fun sendInput() {
@@ -237,12 +317,13 @@ class ConsoleFragment : Fragment() {
             Toast.makeText(requireContext(), R.string.hex_invalid, Toast.LENGTH_SHORT).show()
             return
         }
-        val sent = ConnectionManager.send(data)
-        Toast.makeText(
-            requireContext(),
-            if (sent) R.string.send_ok else R.string.not_connected_msg,
-            Toast.LENGTH_SHORT
-        ).show()
+        if (ConnectionManager.send(data)) {
+            appendTxSent(data)
+            historyRepo.add(input)
+            // 成功不弹 Toast,发送内容以蓝色 TX 行回显在接收区
+        } else {
+            Toast.makeText(requireContext(), R.string.not_connected_msg, Toast.LENGTH_SHORT).show()
+        }
     }
 
     /** 定时发送使用,静默失败 */
@@ -253,11 +334,21 @@ class ConsoleFragment : Fragment() {
         return ConnectionManager.send(data)
     }
 
+    private fun appendTxSent(bytes: ByteArray) {
+        val tx = DisplayItem.Tx(bytes, System.currentTimeMillis(), txFormatHex, charset.javaName)
+        displayQueue.addLast(tx)
+        while (displayQueue.size > 5000) displayQueue.removeFirst()
+        logBuilder.append(renderTx(tx))
+        trimLog()
+        binding.tvReceive.text = logBuilder
+        autoScroll()
+    }
+
     private fun buildSendBytes(input: String): ByteArray? {
         val base: ByteArray = if (txFormatHex) {
             HexUtils.parseHex(input) ?: return null
         } else {
-            input.toByteArray(Charsets.UTF_8)
+            HexUtils.encode(input, charset)
         }
         val ending = lineEndingValues[binding.spLineEnd.selectedItemPosition.coerceIn(0, lineEndingValues.size - 1)]
         return if (ending.isEmpty()) base else base + ending.toByteArray(Charsets.UTF_8)
@@ -280,36 +371,71 @@ class ConsoleFragment : Fragment() {
         loopJob = null
     }
 
-    // ================= UUID 设置 =================
+    // ================= 发送历史 =================
 
-    private fun showUuidDialog() {
+    private fun showHistoryDialog() {
+        val history = historyRepo.load()
+        if (history.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.history_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.history_title)
+            .setItems(history.toTypedArray()) { _, which ->
+                val text = history[which]
+                binding.etSend.setText(text)
+                binding.etSend.setSelection(text.length)
+            }
+            .setPositiveButton(R.string.cancel, null)
+            .setNegativeButton(R.string.clear_history) { _, _ ->
+                historyRepo.clear()
+                Toast.makeText(requireContext(), R.string.history_cleared, Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    // ================= BLE 设置(自定义 UUID + MTU) =================
+
+    private fun showBleSettingsDialog() {
         val dlg = DialogUuidBinding.inflate(layoutInflater)
-        val (s, w, n) = BleUuidPrefs.read(requireContext())
-        dlg.etUuidService.setText(s?.toString() ?: "")
-        dlg.etUuidWrite.setText(w?.toString() ?: "")
-        dlg.etUuidNotify.setText(n?.toString() ?: "")
+        val s = BleSettingsPrefs.load(requireContext())
+        dlg.etUuidService.setText(s.serviceUuid)
+        dlg.etUuidWrite.setText(s.writeUuid)
+        dlg.etUuidNotify.setText(s.notifyUuid)
+        dlg.etUuidCfg.setText(s.cfgUuid)
+        dlg.etMtu.setText(s.mtu.toString())
 
         MaterialAlertDialogBuilder(requireContext())
-            .setTitle(R.string.uuid_setting)
+            .setTitle(R.string.ble_setting)
             .setView(dlg.root)
             .setPositiveButton(R.string.save) { _, _ ->
-                val sv = dlg.etUuidService.text?.toString()?.trim().orEmpty()
-                val wv = dlg.etUuidWrite.text?.toString()?.trim().orEmpty()
-                val nv = dlg.etUuidNotify.text?.toString()?.trim().orEmpty()
+                val service = dlg.etUuidService.text?.toString()?.trim().orEmpty()
+                val write = dlg.etUuidWrite.text?.toString()?.trim().orEmpty()
+                val notify = dlg.etUuidNotify.text?.toString()?.trim().orEmpty()
+                val cfg = dlg.etUuidCfg.text?.toString()?.trim().orEmpty()
 
-                fun valid(u: String): Boolean = u.isEmpty() || runCatching { UUID.fromString(u) }.isSuccess
-                if (!valid(sv) || !valid(wv) || !valid(nv)) {
+                fun valid(u: String): Boolean = u.isEmpty() || isUuidOrHex4(u)
+                if (!valid(service) || !valid(write) || !valid(notify) || !valid(cfg)) {
                     Toast.makeText(requireContext(), R.string.uuid_invalid, Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
-                BleUuidPrefs.save(requireContext(), sv, wv, nv)
+                val mtu = dlg.etMtu.text?.toString()?.toIntOrNull()?.coerceIn(23, 517) ?: 247
+                BleSettingsPrefs.save(requireContext(), BleSettings(service, write, notify, cfg, mtu))
                 Toast.makeText(requireContext(), R.string.uuid_saved, Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
 
+    private fun isUuidOrHex4(u: String): Boolean {
+        val t = u.trim()
+        if (t.length == 4 && t.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) return true
+        return runCatching { UUID.fromString(t) }.isSuccess
+    }
+
     companion object {
         private const val MAX_LOG_CHARS = 400_000
+        private const val TX_COLOR = 0xFF1E88E5.toInt()
+        private const val RX_COLOR = 0xFF43A047.toInt()
     }
 }

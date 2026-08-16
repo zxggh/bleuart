@@ -4,7 +4,7 @@ import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import java.util.UUID
+import com.example.bluetoothserial.data.BleSettings
 import java.util.concurrent.Executors
 
 /** 连接类型 */
@@ -29,7 +29,7 @@ data class RxData(val bytes: ByteArray, val timestamp: Long) {
 
 /**
  * 全局连接管理器:统一管理经典蓝牙 SPP 与 BLE UART 连接,
- * 向 UI 层广播连接状态与接收数据。
+ * 向 UI 层广播连接状态、接收数据与专有模块模式。
  * 所有回调均发生在主线程。
  */
 object ConnectionManager {
@@ -37,6 +37,7 @@ object ConnectionManager {
     private val main = Handler(Looper.getMainLooper())
     private val stateListeners = mutableListOf<(ConnState) -> Unit>()
     private val dataListeners = mutableListOf<(RxData) -> Unit>()
+    private val moduleModeListeners = mutableListOf<(ModuleMode) -> Unit>()
 
     /** 最近接收数据缓冲,用于页面重建后回放,避免丢数据 */
     private val pending = ArrayDeque<RxData>()
@@ -51,6 +52,11 @@ object ConnectionManager {
 
     /** 错误/断开提示回调(由发起连接的页面设置) */
     var errorCallback: ((String) -> Unit)? = null
+
+    /** 当前连接的 BLE 设备是否为专有模块 */
+    @Volatile
+    var isProprietaryModule: Boolean = false
+        private set
 
     // ---------------- 监听注册 ----------------
 
@@ -78,6 +84,15 @@ object ConnectionManager {
         dataListeners.remove(listener)
     }
 
+    fun addModuleModeListener(listener: (ModuleMode) -> Unit) {
+        moduleModeListeners.add(listener)
+        listener(ble?.mode ?: ModuleMode.PASSTHROUGH)
+    }
+
+    fun removeModuleModeListener(listener: (ModuleMode) -> Unit) {
+        moduleModeListeners.remove(listener)
+    }
+
     // ---------------- 连接 ----------------
 
     fun connectClassic(device: BluetoothDevice) {
@@ -100,18 +115,13 @@ object ConnectionManager {
         client.connect()
     }
 
-    fun connectBle(
-        context: Context,
-        device: BluetoothDevice,
-        serviceUuid: UUID?,
-        writeUuid: UUID?,
-        notifyUuid: UUID?
-    ) {
+    fun connectBle(context: Context, device: BluetoothDevice, settings: BleSettings) {
         disconnect()
         setState(ConnState(ConnType.CONNECTING, device.name ?: device.address, device.address))
-        val client = BleUartClient(context.applicationContext, device, serviceUuid, writeUuid, notifyUuid)
+        val client = BleUartClient(context.applicationContext, device, settings)
         ble = client
         client.onConnected = {
+            isProprietaryModule = client.isProprietary
             setState(ConnState(ConnType.BLE, device.name ?: device.address, device.address))
         }
         client.onData = { data -> dispatchData(data) }
@@ -119,7 +129,11 @@ object ConnectionManager {
         client.onClosed = {
             val wasConnected = state.isConnected
             setState(ConnState())
+            isProprietaryModule = false
             if (wasConnected) errorCallback?.invoke("连接已断开")
+        }
+        client.onModeChanged = { mode ->
+            main.post { moduleModeListeners.toList().forEach { it(mode) } }
         }
         client.connect()
     }
@@ -131,10 +145,26 @@ object ConnectionManager {
         ble = null
         c?.close()
         b?.close()
+        isProprietaryModule = false
         if (state.type != ConnType.NONE) setState(ConnState())
     }
 
     fun isConnected(): Boolean = state.isConnected
+
+    // ---------------- 专有模块模式切换 ----------------
+
+    /** 进入设置模式(关闭 fff1/fff2,启用 fff3 双向) */
+    fun enterModuleConfigMode() {
+        ble?.setMode(ModuleMode.CONFIG)
+    }
+
+    /** 返回透传模式(启用 fff1 通知 + fff2 写入,关闭 fff3) */
+    fun enterPassthroughMode() {
+        ble?.setMode(ModuleMode.PASSTHROUGH)
+    }
+
+    /** 当前模块模式 */
+    fun currentModuleMode(): ModuleMode = ble?.mode ?: ModuleMode.PASSTHROUGH
 
     // ---------------- 发送 / 接收 ----------------
 

@@ -1,75 +1,98 @@
-# 蓝牙串口调试助手 (Bluetooth Serial Assistant)
+# Zxg蓝牙调试助手 (Bluetooth Serial Assistant)
 
-一款面向 **RS485 / 串口设备调试** 的 Android 蓝牙调试工具，同时支持 **经典蓝牙 (SPP)** 与 **BLE (低功耗蓝牙 UART)**，适用于各类蓝牙转串口 / 蓝牙转 RS485 模块（如 HC-05、HC-06、JDY-31、JDY-08、HM-10、JDY-23 等）。
+一款面向 **RS485 / 串口设备调试** 的 Android 蓝牙调试工具，同时支持 **经典蓝牙 (SPP)** 与 **BLE (低功耗蓝牙 UART)**，适用于各类蓝牙转串口 / 蓝牙转 RS485 模块（如 HC-05、HC-06、JDY-31、JDY-08、HM-10、JDY-23 等），并为三特征专有模块（fff1/fff2/fff3）提供独立设置页与模式切换。
 
 ## 功能特性
 
 - **双协议支持**
   - 经典蓝牙：SPP (RFCOMM) 客户端，标准串口服务 UUID `00001101-0000-1000-8000-00805F9B34FB`，兼容失败时自动回退 channel=1 连接方式。
-  - BLE：自动识别常见 UART 服务（Nordic UART Service / HM-10 `FFE0` / JDY-08 `FFE5`），支持手动指定 服务 / 写特征 / 通知特征 UUID。
+  - BLE：自动识别常见 UART 服务（Nordic UART Service / HM-10 `FFE0` / JDY-08 `FFE5`），支持手动指定 服务 / 写特征 / 通知特征 UUID（支持 `fff1` 这类 4 位缩写），**MTU 可调**（23-517）。
 - **RS485 调试**
   - 通过蓝牙转 RS485 模块与 485 总线设备通信（Modbus RTU / 自定义协议均可）。
   - 发送支持 **行尾选择**：无 / `\r` / `\n` / `\r\n`，Modbus RTU 请选「无」。
   - **定时发送**（可调间隔，最小 20ms），适合轮询从站。
+- **Modbus RTU 调试页**
+  - 内置 01/02/03/04 读、05/06 写单、0F/10 写多等常规功能码。
+  - 自动计算 **CRC16 (Modbus)** 并实时预览完整帧，一键发送（HEX、无行尾）。
+- **字符编码**
+  - 收发文本支持 **UTF-8 / GBK / GB2312 / GB18030** 编码选择（HEX 与文本两种格式）。
+- **收发区分显示**
+  - 发送（TX 蓝色）与接收（RX 绿色）以不同颜色显示，均带 `HH:mm:ss.SSS` 时间戳；点击发送不再弹提示窗，直接以 TX 行回显。
 - **自定义命令库**
-  - 保存常用命令（名称 + 内容 + HEX/ASCII 格式），点击即发送，长按编辑/删除，本地持久化。
-- **收发格式独立选择**
-  - 接收区与发送区均可独立切换 **HEX / ASCII** 显示与编码。
-  - HEX 输入自动忽略空格/逗号等分隔符，并校验偶数长度。
-- **接收时间戳**
-  - 每条接收数据带 `HH:mm:ss.SSS` 毫秒级时间戳，可一键开关。
-  - 接收统计（字节数 / 条数）、暂停滚动、清空、复制。
+  - 保存常用命令（名称 + 内容 + HEX/文本格式），点击即发送，长按编辑/删除，本地持久化。
+- **发送历史**
+  - 自动记录最近 50 条发送内容，一键回填或清空。
+- **接收区菜单**
+  - 更多菜单（⋮）：暂停/继续滚动、**清屏**、复制；接收统计（字节数 / 条数）。
+- **专有模块模式**（`设置`页签）
+  - 针对三特征模块（fff1 接收通知 / fff2 写入发送 / fff3 双向配置）：
+  - 连接后默认**透传模式**：自动启用 fff1 通知 + fff2 写入，关闭 fff3。
+  - 点击「进入设置模式」：自动关闭 fff1/fff2，启用 fff3 写入 + 通知，并提示**请开启硬件 SET 开关**。
+  - 模式切换通过重新 `discoverServices` + 特征通道动态绑定/解绑完成（UUID 支持 4 位缩写，可在设置页自定义）。
 - **其他**
   - 接收缓冲防溢出（自动裁剪，最长约 40 万字符）。
   - 页面重建（旋转屏幕等）自动回放最近接收数据，不丢包。
   - 自动滚动到底部，翻看历史时暂停滚动。
+  - 扫描结果合并刷新 + 全版本定位权限申请，兼容国产 ROM，解决"扫描后无法选中设备"问题。
 
 ## 使用说明
 
-1. 打开手机蓝牙，授予 App 所需权限（Android 12+ 授予「附近的设备」；Android 11 及以下授予定位权限）。
+1. 打开手机蓝牙，授予 App 所需权限（Android 12+ 授予「附近的设备」+ 定位；Android 11 及以下授予定位权限；首次启动会自动请求）。
 2. 进入「设备」页：
    - RS485 经典蓝牙适配器（HC-05/HC-06/JDY-31）→ 选择 **经典蓝牙** 扫描。
-   - BLE 模块（JDY-08/HM-10/NUS）→ 选择 **BLE** 扫描。
+   - BLE 模块（JDY-08/HM-10/NUS/专有模块）→ 选择 **BLE** 扫描。
 3. 点击设备连接，自动跳转到「调试」页。
-4. 在发送区输入内容（HEX 如 `01 03 00 00 00 02 C4 0B`，或 ASCII 文本），选择格式与行尾，点「发送」。
+4. 发送区输入内容（HEX 如 `01 03 00 00 00 02 C4 0B`，或文本），选择格式与**编码**（UTF-8/GBK/GB2312/GB18030）、行尾，点「发送」；发送内容以蓝色 TX 行回显。
 5. 需要轮询时勾选「定时发送」并设置间隔（ms）。
+6. **Modbus** 页签：填从站地址/功能码/起始地址/数量或值，自动生成带 CRC16 的完整帧，点「发送」。
+7. **设置** 页签（专有模块）：连接后默认透传模式；点「进入设置模式」→ 按提示开启硬件 SET 开关 → 确定，App 自动切换 fff3 通道；调试完成后点「返回透传模式」。
 
 ### Modbus RTU 快速上手
 
-- 发送格式选 **HEX**，行尾选 **无**。
-- CRC16 校验需要自行计算后附加在报文尾部（如 `01 03 00 00 00 02 C4 0B`）。
+- 内置页面自动计算 CRC16（多项式 0xA001），帧预览实时更新，点「发送」按 HEX 无行尾发送。
+- 也可在调试页手动发送，如读保持寄存器：`01 03 00 00 00 02 C4 0B`（含 CRC）。
 - 可用「定时发送」以固定间隔轮询寄存器。
 
-### BLE 自定义 UUID
+### BLE 设置（调试页「BLE设置」按钮）
 
-部分模块的 UART 服务不在自动识别列表内，可在调试页点击 **「UUID」** 按钮手动填写：
+部分模块的 UART 服务不在自动识别列表内，可手动填写：
 
-- 服务 UUID（必填，如 `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`）
-- 写特征 UUID（可留空自动识别）
-- 通知特征 UUID（可留空自动识别）
+- 服务 UUID（可留空自动识别，如 `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`）
+- 写特征 UUID / 通知特征 UUID（可留空自动识别）
+- 配置特征 UUID（专有模块 fff3，可留空）
+- MTU 大小（23-517，默认 247）
+
+所有 UUID 支持 4 位缩写（如 `fff1` 自动展开为完整 UUID）。
 
 ## 项目结构
 
 ```
 app/src/main/java/com/example/bluetoothserial/
-├── MainActivity.kt            # 主界面、底部导航、权限请求
+├── MainActivity.kt            # 主界面、底部导航(5页)、权限请求
 ├── bt/
-│   ├── ConnectionManager.kt   # 连接状态/数据分发、发送队列
+│   ├── ConnectionManager.kt   # 连接状态/数据分发、发送队列、模块模式
 │   ├── ClassicSppClient.kt    # 经典蓝牙 SPP 客户端
-│   ├── BleUartClient.kt       # BLE UART 客户端(自动/自定义 UUID)
-│   └── BleUuidPrefs.kt        # 自定义 UUID 持久化
+│   ├── BleUartClient.kt       # BLE UART(通用+专有模块 fff1/2/3 模式切换)
+│   └── (ModuleMode 枚举)       # PASSTHROUGH / CONFIG
 ├── data/
 │   ├── CustomCommand.kt       # 命令数据模型
-│   └── CommandRepository.kt   # 命令库持久化(SharedPreferences+JSON)
-├── model/DataFormat.kt        # HEX/ASCII 枚举
+│   ├── CommandRepository.kt   # 命令库持久化
+│   ├── SendHistoryRepository.kt # 发送历史
+│   └── BleSettings.kt         # 自定义 UUID + MTU 配置
+├── model/
+│   ├── DataFormat.kt          # HEX/文本枚举
+│   └── TextCharset.kt         # UTF-8/GBK/GB2312/GB18030
 ├── ui/
-│   ├── ConsoleFragment.kt     # 调试页(收发控制台)
+│   ├── ConsoleFragment.kt     # 调试页(收发控制台、编码、历史、颜色)
 │   ├── DeviceFragment.kt      # 设备页(扫描/连接)
 │   ├── CommandFragment.kt     # 命令页
+│   ├── ModbusFragment.kt      # Modbus RTU 页(自动 CRC16)
+│   ├── ModuleSettingsFragment.kt # 专有模块设置页(模式切换)
 │   ├── DeviceAdapter.kt       # 设备列表适配器
 │   └── CommandAdapter.kt      # 命令列表适配器
 └── util/
-    ├── HexUtils.kt            # HEX/ASCII 转换
+    ├── HexUtils.kt            # HEX/编码转换
+    ├── Crc16.kt               # Modbus CRC16
     └── TimeFormat.kt          # 时间戳格式化
 ```
 
@@ -166,13 +189,15 @@ jobs:
 | --- | --- | --- |
 | `BLUETOOTH_SCAN` | 扫描蓝牙设备 | Android 12+（运行时） |
 | `BLUETOOTH_CONNECT` | 连接/通信 | Android 12+（运行时） |
-| `ACCESS_FINE_LOCATION` | BLE 扫描所需 | Android 11 及以下（运行时） |
+| `ACCESS_FINE_LOCATION` | BLE 扫描所需（部分国产 ROM 在 12+ 仍要求） | 全部版本（运行时） |
 | `BLUETOOTH` / `BLUETOOTH_ADMIN` | 经典蓝牙 | Android 11 及以下（安装时） |
 
 ## 常见问题
 
 - **扫描不到设备**：确认手机蓝牙已开启、权限已授予；经典蓝牙扫描范围约 10 米，BLE 请靠近设备；部分手机需在系统设置中额外允许「附近设备」权限。
-- **BLE 连上但收发无数据**：模块的 UART 服务不在自动识别列表，请在「UUID」中手动填写服务/特征 UUID。
+- **扫描出设备但点不中**：已通过"扫描结果合并刷新 + 全版本定位权限申请"修复；若仍异常，请确认定位权限已授予，并停止扫描后再点击。
+- **BLE 连上但收发无数据**：模块的 UART 服务不在自动识别列表，请在调试页「BLE设置」中手动填写服务/特征 UUID。
 - **经典蓝牙连接失败**：确认模块处于从机模式且未与其他设备连接；本 App 已内置 channel=1 回退。
 - **HEX 发送报错**：HEX 字符串字符数必须为偶数（如 `01 03`，不能是 `0 1 3` 的奇数形式）。
+- **专有模块设置模式无法点击**：确认已连接 BLE 设备且设备包含 fff1/fff2/fff3 三个特征；若特征 UUID 不同，在设置页修改后重新连接。
 - **网页上传后 Actions 编译失败**：多半是点开头文件（`.github`、`.sdkmanager`）被网页上传跳过。修复方法：用 **Add file → Create new file** 手动创建 `.github/workflows/build-apk.yml`（文件名可直接输入完整路径），内容见上方「在线编译」章节；新版工作流不依赖任何隐藏文件，建好后在 Actions 页对失败的任务点 **Re-run all jobs** 即可。

@@ -129,15 +129,10 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp" />
 
-            <TextView
-                android:id="@+id/tvRxStats"
+            <Space
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:layout_weight="1"
-                android:maxLines="1"
-                android:textSize="11sp"
-                tools:ignore="RtlSymmetry" />
+                android:layout_height="1dp"
+                android:layout_weight="1" />
 
             <CheckBox
                 android:id="@+id/cbTimestamp"
@@ -156,6 +151,17 @@
                 android:src="@drawable/ic_more"
                 android:tint="?attr/colorOnSurface" />
         </LinearLayout>
+
+        <!-- 收发计数(独立整行,避免截断) -->
+        <TextView
+            android:id="@+id/tvRxStats"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:maxLines="1"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="11sp"
+            tools:ignore="RtlSymmetry" />
 
         <ScrollView
             android:id="@+id/scrollReceive"

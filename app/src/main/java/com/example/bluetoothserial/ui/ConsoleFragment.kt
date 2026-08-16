@@ -38,6 +38,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.ByteArrayOutputStream
 import java.util.UUID
 
 /** 接收区显示条目:区分发送(TX)与接收(RX) */
@@ -48,7 +49,10 @@ sealed class DisplayItem {
 
 /**
  * 调试页:连接状态、接收区(HEX/文本 + 接收编码 + 时间戳 + 收发颜色区分)、
- * 发送区(HEX/文本 + 发送编码 + 行尾 + 定时发送 + 历史记录)、BLE 设置(自定义 UUID + MTU)
+ * 发送区(HEX/文本 + 发送编码 + 行尾 + 定时发送 + 历史记录)、BLE 设置(自定义 UUID + MTU)。
+ *
+ * 接收采用"行缓冲"渲染:BLE 分包到达的通知先合并进当前行,遇到换行(或超长)
+ * 才提交为一行,避免一条回复被拆成多行;未暂停时始终自动滚动到最后一行。
  */
 class ConsoleFragment : Fragment() {
 
@@ -57,6 +61,11 @@ class ConsoleFragment : Fragment() {
 
     private val displayQueue = ArrayDeque<DisplayItem>()
     private val logBuilder = SpannableStringBuilder()
+
+    // 接收行缓冲(合并分包)
+    private val rxLineBuffer = ByteArrayOutputStream()
+    private var rxLineStartTs = 0L
+
     private var rxBytesTotal = 0L
     private var txBytesTotal = 0L
     private var rxFormatHex = true
@@ -207,18 +216,44 @@ class ConsoleFragment : Fragment() {
         }
     }
 
-    // ================= 接收 =================
+    // ================= 接收(行缓冲合并分包) =================
 
     private fun appendReceived(rx: RxData) {
-        displayQueue.addLast(DisplayItem.Rx(rx))
-        while (displayQueue.size > 5000) displayQueue.removeFirst()
         rxBytesTotal += rx.bytes.size
+        if (rxLineStartTs == 0L) rxLineStartTs = rx.timestamp
+        rxLineBuffer.write(rx.bytes)
 
-        logBuilder.append(renderRx(rx))
-        trimLog()
-        binding.tvReceive.text = logBuilder
+        val buf = rxLineBuffer.toByteArray()
+        var lastNl = -1
+        for (i in buf.indices) {
+            if (buf[i] == 0x0A.toByte()) lastNl = i
+        }
+        if (lastNl >= 0 || buf.size >= MAX_LINE_BYTES) {
+            val lineEnd = if (lastNl >= 0) lastNl else buf.size
+            // 去掉行尾 \r\n 仅用于显示
+            var displayEnd = lineEnd
+            while (displayEnd > 0 && (buf[displayEnd - 1] == 0x0A.toByte() || buf[displayEnd - 1] == 0x0D.toByte())) {
+                displayEnd--
+            }
+            commitRxLine(buf.copyOfRange(0, displayEnd), rxLineStartTs)
+
+            val rest = buf.copyOfRange(if (lastNl >= 0) lastNl + 1 else buf.size, buf.size)
+            rxLineBuffer.reset()
+            if (rest.isNotEmpty()) rxLineBuffer.write(rest)
+            rxLineStartTs = if (rest.isNotEmpty()) rx.timestamp else 0L
+        }
         updateStats()
         autoScroll()
+    }
+
+    private fun commitRxLine(bytes: ByteArray, ts: Long) {
+        if (bytes.isEmpty() && ts == 0L) return
+        val line = RxData(bytes, ts)
+        displayQueue.addLast(DisplayItem.Rx(line))
+        while (displayQueue.size > 5000) displayQueue.removeFirst()
+        logBuilder.append(renderRx(line))
+        trimLog()
+        binding.tvReceive.text = logBuilder
     }
 
     /** 发送回显(TX 蓝色) */
@@ -270,19 +305,19 @@ class ConsoleFragment : Fragment() {
         }
     }
 
+    /** 未暂停时始终滚动到最后一行 */
     private fun autoScroll(force: Boolean = false) {
+        if (paused && !force) return
         binding.scrollReceive.post {
-            val sv = binding.scrollReceive
-            val child = sv.getChildAt(0) ?: return@post
-            val atBottom = force ||
-                (!paused && (sv.scrollY + sv.height >= child.height - 200 || child.height <= sv.height))
-            if (atBottom) sv.fullScroll(View.FOCUS_DOWN)
+            binding.scrollReceive.fullScroll(View.FOCUS_DOWN)
         }
     }
 
     private fun clearReceive() {
         displayQueue.clear()
         logBuilder.delete(0, logBuilder.length)
+        rxLineBuffer.reset()
+        rxLineStartTs = 0L
         rxBytesTotal = 0
         txBytesTotal = 0
         binding.tvReceive.text = getString(R.string.receive_placeholder)
@@ -451,6 +486,7 @@ class ConsoleFragment : Fragment() {
 
     companion object {
         private const val MAX_LOG_CHARS = 400_000
+        private const val MAX_LINE_BYTES = 4096
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
         private const val KEY_CHARSET_RX = "charset_rx"

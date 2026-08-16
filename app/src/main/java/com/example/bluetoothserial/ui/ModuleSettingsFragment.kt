@@ -1,11 +1,14 @@
 package com.example.bluetoothserial.ui
 
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.example.bluetoothserial.R
@@ -29,8 +32,8 @@ import kotlinx.coroutines.launch
  * - 透传模式: 启用 fff1 通知 + fff2 写入,关闭 fff3(连接后默认);
  * - 设置模式: 关闭 fff1/fff2,启用 fff3 写入 + 通知(空中配置通道)。
  * 进入设置模式后 App 自动发送认证指令 at+auth=123456,认证成功后自动查询
- * at+baud? / at+pari? 并显示当前串口信息(如 115200,8,1,无校验)。
- * 所有设置指令根据模块回复(+OK / +ERR=[NUM] / 超时)给出对应提示。
+ * at+baud? / at+pari? 并显示当前串口信息(如 115200,8,1,无校验);
+ * 波特率设置成功后再自动回读并刷新显示。返回透传模式不断开连接,仅提示手动重启模块。
  */
 class ModuleSettingsFragment : Fragment() {
 
@@ -74,7 +77,10 @@ class ModuleSettingsFragment : Fragment() {
         binding.spBaud.setSelection(10) // 默认 115200
 
         binding.btnEnterConfig.setOnClickListener { confirmEnterConfig() }
-        binding.btnExitConfig.setOnClickListener { ConnectionManager.enterPassthroughMode() }
+        binding.btnExitConfig.setOnClickListener {
+            ConnectionManager.enterPassthroughMode()
+            Toast.makeText(requireContext(), R.string.module_exit_prompt, Toast.LENGTH_LONG).show()
+        }
         binding.btnSetBaud.setOnClickListener {
             val idx = binding.spBaud.selectedItemPosition.coerceIn(0, baudList.size - 1)
             sendAt("at+baud=${baudList[idx].index}", Pending.BAUD_SET)
@@ -229,6 +235,8 @@ class ModuleSettingsFragment : Fragment() {
             Pending.BAUD_SET -> {
                 pending = Pending.NONE
                 Toast.makeText(requireContext(), R.string.module_baud_set_ok, Toast.LENGTH_SHORT).show()
+                // 设置成功后自动回读波特率并刷新当前串口信息
+                sendAt("at+baud?", Pending.BAUD_QUERY)
             }
             Pending.CMD -> {
                 val t = line
@@ -294,6 +302,16 @@ class ModuleSettingsFragment : Fragment() {
             R.string.module_mode_label,
             if (inConfig) getString(R.string.mode_config) else getString(R.string.mode_passthrough)
         )
+        // 按钮颜色跟随模式:「进入设置模式」仅在设置模式下高亮,「返回透传模式」始终无选中色
+        updateModeButtonAppearance(inConfig)
+    }
+
+    private fun updateModeButtonAppearance(inConfig: Boolean) {
+        val primary = ContextCompat.getColor(requireContext(), R.color.primary)
+        binding.btnEnterConfig.setBackgroundTintList(
+            if (inConfig) ColorStateList.valueOf(primary) else ColorStateList.valueOf(Color.TRANSPARENT)
+        )
+        binding.btnEnterConfig.setTextColor(if (inConfig) Color.WHITE else primary)
     }
 
     companion object {

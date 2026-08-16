@@ -121,6 +121,7 @@
     <string name="module_reply_timeout">未收到模块回复(超时),请重试</string>
     <string name="module_reply_unknown">回复无法识别: %1$s</string>
     <string name="module_baud_set_ok">波特率设置成功,重启后生效</string>
+    <string name="module_exit_prompt">已返回透传模式,蓝牙连接保持。若修改过波特率/校验等参数,请手动重启模块后生效。</string>
 
     <string-array name="err_codes">
         <item>当前正在解析 AT,指令间隔太短</item>

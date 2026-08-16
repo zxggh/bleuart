@@ -1,6 +1,9 @@
 package com.example.bluetoothserial.ui
 
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -19,14 +22,16 @@ import com.example.bluetoothserial.util.TimeFormat
 import java.io.ByteArrayOutputStream
 
 /**
- * Modbus RTU 调试页:常规功能码 + 自动 CRC16 校验 + 接收窗口
+ * Modbus RTU 调试页:常规功能码 + 自动 CRC16 校验。
+ * 本页独立显示发送与接收:发送(TX 蓝色)与接收(RX 绿色)分行显示,
+ * 仅显示本页可见期间的实时数据(不显示调试页的历史接收)。
  */
 class ModbusFragment : Fragment() {
 
     private var _binding: FragmentModbusBinding? = null
     private val binding get() = _binding!!
 
-    private val rxBuffer = StringBuilder()
+    private val modbusLog = SpannableStringBuilder()
     private val dataListener: (RxData) -> Unit = { appendRx(it) }
 
     /** 功能码定义: read=读类, multi=写多类 */
@@ -52,9 +57,9 @@ class ModbusFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.spFunction.adapter = ArrayAdapter(
-            requireContext(), android.R.layout.simple_spinner_item, functions.map { it.label }
+            requireContext(), R.layout.spinner_item, functions.map { it.label }
         ).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            setDropDownViewResource(R.layout.spinner_dropdown_item)
         }
         binding.spFunction.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -94,20 +99,39 @@ class ModbusFragment : Fragment() {
         _binding = null
     }
 
-    // ================= 接收窗口 =================
+    // ================= 本页收发显示(分颜色/方向) =================
 
     private fun appendRx(rx: RxData) {
-        rxBuffer.append("[").append(TimeFormat.stamp(rx.timestamp)).append("] ")
+        val sb = SpannableStringBuilder()
+        sb.append("[").append(TimeFormat.stamp(rx.timestamp)).append("] RX< ")
             .append(HexUtils.toHex(rx.bytes)).append("\n")
-        if (rxBuffer.length > MAX_RX_CHARS) {
-            rxBuffer.delete(0, rxBuffer.length - MAX_RX_CHARS)
+        if (sb.length > 1) {
+            sb.setSpan(ForegroundColorSpan(RX_COLOR), 0, sb.length - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        binding.tvModbusRx.text = rxBuffer.toString()
+        appendDisplay(sb)
+    }
+
+    private fun appendTx(bytes: ByteArray) {
+        val sb = SpannableStringBuilder()
+        sb.append("[").append(TimeFormat.stamp(System.currentTimeMillis())).append("] TX> ")
+            .append(HexUtils.toHex(bytes)).append("\n")
+        if (sb.length > 1) {
+            sb.setSpan(ForegroundColorSpan(TX_COLOR), 0, sb.length - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        appendDisplay(sb)
+    }
+
+    private fun appendDisplay(sb: SpannableStringBuilder) {
+        modbusLog.append(sb)
+        if (modbusLog.length > MAX_RX_CHARS) {
+            modbusLog.delete(0, modbusLog.length - MAX_RX_CHARS)
+        }
+        binding.tvModbusRx.text = modbusLog
         binding.scrollModbusRx.post { binding.scrollModbusRx.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun clearRx() {
-        rxBuffer.setLength(0)
+        modbusLog.delete(0, modbusLog.length)
         binding.tvModbusRx.text = ""
     }
 
@@ -203,6 +227,7 @@ class ModbusFragment : Fragment() {
             return
         }
         if (ConnectionManager.send(frame)) {
+            appendTx(frame)
             Toast.makeText(requireContext(), "已发送 ${frame.size} 字节", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(requireContext(), R.string.not_connected_msg, Toast.LENGTH_SHORT).show()
@@ -211,5 +236,7 @@ class ModbusFragment : Fragment() {
 
     companion object {
         private const val MAX_RX_CHARS = 300_000
+        private const val TX_COLOR = 0xFF1E88E5.toInt()
+        private const val RX_COLOR = 0xFF43A047.toInt()
     }
 }

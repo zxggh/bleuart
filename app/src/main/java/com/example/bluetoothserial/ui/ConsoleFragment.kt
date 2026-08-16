@@ -48,11 +48,10 @@ sealed class DisplayItem {
 }
 
 /**
- * 调试页:连接状态、接收区(HEX/ASCII 下拉 + 接收编码 + 时间戳 + 收发颜色区分)、
- * 发送区(HEX/ASCII 下拉 + 发送编码 + 行尾 + 定时发送 + 历史记录)、BLE 设置(自定义 UUID + MTU)。
- *
- * 接收采用"行缓冲"渲染:BLE 分包到达的通知先合并进当前行,遇到换行(或超长)
- * 才提交为一行,避免一条回复被拆成多行;未暂停时始终自动滚动到最后一行。
+ * 调试页。
+ * 格式与编码合并为一个下拉: [HEX][UTF-8][GBK][GB2312][GB18030],默认 HEX;
+ * 接收采用"行缓冲"渲染(合并 BLE 分包),未暂停时始终滚动到最后一行;
+ * 收发分颜色显示(TX 蓝 / RX 绿);收发计数上下两行显示。
  */
 class ConsoleFragment : Fragment() {
 
@@ -68,13 +67,21 @@ class ConsoleFragment : Fragment() {
 
     private var rxBytesTotal = 0L
     private var txBytesTotal = 0L
-    private var rxFormatHex = true
-    private var txFormatHex = true
+
+    /** 0=HEX, 1..N=文本+对应编码 */
+    private var rxModeIndex = 0
+    private var txModeIndex = 0
+
     private var paused = false
     private var loopJob: Job? = null
-    private var rxCharset: TextCharset = TextCharset.UTF8
-    private var txCharset: TextCharset = TextCharset.UTF8
     private lateinit var historyRepo: SendHistoryRepository
+
+    private val rxIsHex get() = rxModeIndex == 0
+    private val rxCharset: TextCharset
+        get() = if (rxModeIndex == 0) TextCharset.UTF8 else TextCharset.entries[rxModeIndex - 1]
+    private val txIsHex get() = txModeIndex == 0
+    private val txCharset: TextCharset
+        get() = if (txModeIndex == 0) TextCharset.UTF8 else TextCharset.entries[txModeIndex - 1]
 
     private val lineEndingLabels = arrayOf("无", "\\r", "\\n", "\\r\\n")
     private val lineEndingValues = arrayOf("", "\r", "\n", "\r\n")
@@ -91,23 +98,15 @@ class ConsoleFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         historyRepo = SendHistoryRepository(requireContext())
 
-        // 接收/发送格式(HEX/ASCII 下拉,默认 HEX)
-        rxFormatHex = setupFormatSpinner(binding.spRxFormat, KEY_FORMAT_RX, defaultHex = true) { hex ->
-            rxFormatHex = hex
-            renderFromQueue()
-        }
-        txFormatHex = setupFormatSpinner(binding.spTxFormat, KEY_FORMAT_TX, defaultHex = true) { hex ->
-            txFormatHex = hex
-        }
+        // 接收/发送格式+编码(合并下拉,默认 HEX)
+        rxModeIndex = setupModeSpinner(binding.spRxFormat, KEY_MODE_RX) { renderFromQueue() }
+        txModeIndex = setupModeSpinner(binding.spTxFormat, KEY_MODE_TX) {}
 
-        // 接收编码 / 发送编码(独立)
-        rxCharset = setupCharsetSpinner(binding.spCharset, KEY_CHARSET_RX)
-        txCharset = setupCharsetSpinner(binding.spTxCharset, KEY_CHARSET_TX)
-
+        // 行尾
         binding.spLineEnd.adapter = ArrayAdapter(
-            requireContext(), android.R.layout.simple_spinner_item, lineEndingLabels
+            requireContext(), R.layout.spinner_item, lineEndingLabels
         ).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            setDropDownViewResource(R.layout.spinner_dropdown_item)
         }
 
         binding.btnSend.setOnClickListener { sendInput() }
@@ -125,53 +124,23 @@ class ConsoleFragment : Fragment() {
         updateConnectionUi(ConnectionManager.state)
     }
 
-    /** 初始化格式下拉框(HEX/ASCII),返回当前是否为 HEX */
-    private fun setupFormatSpinner(spinner: Spinner, prefsKey: String, defaultHex: Boolean, onSelect: (Boolean) -> Unit): Boolean {
-        val options = arrayOf(getString(R.string.format_hex), getString(R.string.format_text))
-        spinner.adapter = ArrayAdapter(
-            requireContext(), android.R.layout.simple_spinner_item, options
-        ).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+    /**
+     * 初始化合并格式下拉: [HEX][UTF-8][GBK][GB2312][GB18030]。
+     * 返回当前选中的索引(0=HEX)。
+     */
+    private fun setupModeSpinner(spinner: Spinner, prefsKey: String, onSelect: (Int) -> Unit): Int {
+        val labels = listOf("HEX") + TextCharset.entries.map { it.label }
+        spinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, labels).apply {
+            setDropDownViewResource(R.layout.spinner_dropdown_item)
         }
-        val savedHex = requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .getInt(prefsKey, if (defaultHex) 0 else 1) == 0
-        spinner.setSelection(if (savedHex) 0 else 1)
+        val saved = requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .getInt(prefsKey, 0).coerceIn(0, labels.size - 1)
+        spinner.setSelection(saved)
         spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
                     .edit().putInt(prefsKey, position).apply()
-                onSelect(position == 0)
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-        return savedHex
-    }
-
-    /** 初始化编码下拉框,返回当前选中的编码 */
-    private fun setupCharsetSpinner(spinner: Spinner, prefsKey: String): TextCharset {
-        val entries = TextCharset.entries
-        spinner.adapter = ArrayAdapter(
-            requireContext(), android.R.layout.simple_spinner_item, entries.map { it.label }
-        ).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        }
-        val saved = TextCharset.fromName(
-            requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
-                .getString(prefsKey, "UTF-8") ?: "UTF-8"
-        )
-        spinner.setSelection(entries.indexOfFirst { it == saved }.coerceAtLeast(0))
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val cs = entries[position]
-                requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
-                    .edit().putString(prefsKey, cs.javaName).apply()
-                if (prefsKey == KEY_CHARSET_RX) {
-                    rxCharset = cs
-                    renderFromQueue()
-                } else {
-                    txCharset = cs
-                }
+                onSelect(position)
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -289,7 +258,7 @@ class ConsoleFragment : Fragment() {
     private fun renderRx(rx: RxData): SpannableStringBuilder {
         val sb = SpannableStringBuilder()
         val head = if (binding.cbTimestamp.isChecked) "[${TimeFormat.stamp(rx.timestamp)}] RX< " else "RX< "
-        val body = if (rxFormatHex) HexUtils.toHex(rx.bytes) else HexUtils.decode(rx.bytes, rxCharset)
+        val body = if (rxIsHex) HexUtils.toHex(rx.bytes) else HexUtils.decode(rx.bytes, rxCharset)
         sb.append(head).append(body).append("\n")
         if (sb.length > 1) {
             sb.setSpan(ForegroundColorSpan(RX_COLOR), 0, sb.length - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -297,7 +266,7 @@ class ConsoleFragment : Fragment() {
         return sb
     }
 
-    /** 切换格式/编码/时间戳后重建整个显示区 */
+    /** 切换格式/时间戳后重建整个显示区 */
     private fun renderFromQueue() {
         logBuilder.delete(0, logBuilder.length)
         displayQueue.forEach {
@@ -352,7 +321,7 @@ class ConsoleFragment : Fragment() {
         Toast.makeText(requireContext(), R.string.copied, Toast.LENGTH_SHORT).show()
     }
 
-    // ================= 更多菜单(暂停/清屏/复制) =================
+    // ================= 更多菜单(暂停/清屏/复制/更新) =================
 
     private fun showMoreMenu() {
         val menu = PopupMenu(requireContext(), binding.btnMore)
@@ -407,7 +376,7 @@ class ConsoleFragment : Fragment() {
     }
 
     private fun appendTxSent(bytes: ByteArray) {
-        val tx = DisplayItem.Tx(bytes, System.currentTimeMillis(), txFormatHex, txCharset.javaName)
+        val tx = DisplayItem.Tx(bytes, System.currentTimeMillis(), txIsHex, txCharset.javaName)
         displayQueue.addLast(tx)
         while (displayQueue.size > 5000) displayQueue.removeFirst()
         txBytesTotal += bytes.size
@@ -419,7 +388,7 @@ class ConsoleFragment : Fragment() {
     }
 
     private fun buildSendBytes(input: String): ByteArray? {
-        val base: ByteArray = if (txFormatHex) {
+        val base: ByteArray = if (txIsHex) {
             HexUtils.parseHex(input) ?: return null
         } else {
             HexUtils.encode(input, txCharset)
@@ -512,9 +481,7 @@ class ConsoleFragment : Fragment() {
         private const val MAX_LINE_BYTES = 4096
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
-        private const val KEY_FORMAT_RX = "format_rx"
-        private const val KEY_FORMAT_TX = "format_tx"
-        private const val KEY_CHARSET_RX = "charset_rx"
-        private const val KEY_CHARSET_TX = "charset_tx"
+        private const val KEY_MODE_RX = "mode_rx"
+        private const val KEY_MODE_TX = "mode_tx"
     }
 }

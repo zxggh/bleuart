@@ -89,6 +89,7 @@
         android:orientation="vertical"
         android:padding="8dp">
 
+        <!-- 格式下拉 + 收发统计 同一行 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -97,19 +98,19 @@
 
             <Spinner
                 android:id="@+id/spRxFormat"
-                android:layout_width="76dp"
+                android:layout_width="104dp"
                 android:layout_height="wrap_content" />
 
-            <Spinner
-                android:id="@+id/spCharset"
-                android:layout_width="82dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp" />
-
-            <Space
+            <TextView
+                android:id="@+id/tvRxStats"
                 android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:maxLines="2"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="11sp"
+                tools:ignore="RtlSymmetry" />
 
             <CheckBox
                 android:id="@+id/cbTimestamp"
@@ -128,17 +129,6 @@
                 android:src="@drawable/ic_more"
                 android:tint="?attr/colorOnSurface" />
         </LinearLayout>
-
-        <!-- 收发计数(上下两行,整行显示) -->
-        <TextView
-            android:id="@+id/tvRxStats"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:maxLines="2"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="11sp"
-            tools:ignore="RtlSymmetry" />
 
         <ScrollView
             android:id="@+id/scrollReceive"
@@ -189,18 +179,12 @@
 
             <Spinner
                 android:id="@+id/spTxFormat"
-                android:layout_width="76dp"
+                android:layout_width="104dp"
                 android:layout_height="wrap_content" />
 
             <Spinner
-                android:id="@+id/spTxCharset"
-                android:layout_width="82dp"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp" />
-
-            <Spinner
                 android:id="@+id/spLineEnd"
-                android:layout_width="72dp"
+                android:layout_width="76dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp" />
 

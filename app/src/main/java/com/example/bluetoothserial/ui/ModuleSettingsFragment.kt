@@ -71,9 +71,9 @@ class ModuleSettingsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.spBaud.adapter = ArrayAdapter(
-            requireContext(), android.R.layout.simple_spinner_item, baudList.map { it.bps }
+            requireContext(), R.layout.spinner_item, baudList.map { it.bps }
         ).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            setDropDownViewResource(R.layout.spinner_dropdown_item)
         }
         binding.spBaud.setSelection(10) // 默认 115200
 

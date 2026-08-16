@@ -26,12 +26,18 @@ jobs:
         with:
           gradle-version: 8.7
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --stacktrace
+      - name: Get app version
+        id: ver
+        run: echo "v=$(grep -oP 'versionName = \"\K[^\"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload APK 产物
+      - name: Build debug APK
+        run: |
+          echo "Building version ${{ steps.ver.outputs.v }}"
+          gradle :app:assembleDebug --stacktrace
+
+      - name: Upload APK 产物(带版本号,便于区分新旧包)
         uses: actions/upload-artifact@v4
         with:
-          name: bluetooth-serial-apk
+          name: bluetooth-serial-apk-${{ steps.ver.outputs.v }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error

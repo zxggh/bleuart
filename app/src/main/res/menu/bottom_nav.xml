@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_console"
+        android:icon="@drawable/ic_console"
+        android:title="@string/nav_console" />
+    <item
+        android:id="@+id/nav_commands"
+        android:icon="@drawable/ic_commands"
+        android:title="@string/nav_commands" />
+    <item
+        android:id="@+id/nav_devices"
+        android:icon="@drawable/ic_bluetooth"
+        android:title="@string/nav_devices" />
+</menu>

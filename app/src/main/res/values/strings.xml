@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">蓝牙串口调试助手</string>
+
+    <string name="nav_console">调试</string>
+    <string name="nav_commands">命令</string>
+    <string name="nav_devices">设备</string>
+
+    <!-- 连接状态 -->
+    <string name="not_connected">未连接</string>
+    <string name="conn_info_default">未连接任何设备</string>
+    <string name="connect">连接</string>
+    <string name="disconnect">断开</string>
+    <string name="uuid_setting">UUID</string>
+    <string name="connecting">连接中…</string>
+    <string name="conn_classic">经典蓝牙 SPP · %1$s</string>
+    <string name="conn_ble">BLE UART · %1$s</string>
+
+    <!-- 接收区 -->
+    <string name="receive_placeholder">暂无接收数据</string>
+    <string name="timestamp">时间戳</string>
+    <string name="pause">暂停</string>
+    <string name="resume">继续</string>
+    <string name="clear">清空</string>
+    <string name="copy">复制</string>
+    <string name="copied">已复制到剪贴板</string>
+    <string name="rx_stats">%1$d B · %2$d 条</string>
+
+    <!-- 发送区 -->
+    <string name="send">发送</string>
+    <string name="send_hint">输入要发送的内容…(HEX 示例: 01 03 00 00 00 02 C4 0B)</string>
+    <string name="loop_send">定时发送</string>
+    <string name="ms_label">ms</string>
+    <string name="send_ok">已发送</string>
+    <string name="input_empty">发送内容为空</string>
+    <string name="hex_invalid">HEX 格式错误(需为偶数个十六进制字符)</string>
+    <string name="not_connected_msg">未连接设备</string>
+
+    <!-- 设备页 -->
+    <string name="classic">经典蓝牙</string>
+    <string name="ble">BLE</string>
+    <string name="scan">扫描</string>
+    <string name="stop">停止</string>
+    <string name="device_hint">请先开启手机蓝牙并授予权限。\n经典蓝牙: 选择「经典蓝牙」后扫描,RS485 蓝牙适配器(如 HC-05/HC-06/JDY-31)通常在此。\nBLE: 选择「BLE」后扫描,带 UART 服务的 BLE 模块(如 JDY-08/HM-10/NUS)在此。\n点击列表中的设备即可连接。</string>
+    <string name="ble_scan_failed">BLE 扫描失败 (code=%1$d)</string>
+    <string name="device_invalid">设备地址无效</string>
+    <string name="connecting_to">正在连接 %1$s…</string>
+    <string name="conn_failed">连接失败</string>
+    <string name="permission_denied">未获得蓝牙权限,请在系统设置中开启</string>
+    <string name="bt_not_supported">当前设备不支持蓝牙或蓝牙不可用</string>
+
+    <!-- 自定义命令 -->
+    <string name="command_hint">点击命令即可发送,长按可编辑或删除。命令保存在本地。</string>
+    <string name="cmd_add">新增命令</string>
+    <string name="cmd_edit">编辑命令</string>
+    <string name="cmd_name_hint">命令名称</string>
+    <string name="cmd_data_hint">命令内容</string>
+    <string name="cmd_data_hex_hint">HEX 内容,如 01 03 00 00 00 02 C4 0B</string>
+    <string name="cmd_data_ascii_hint">ASCII 文本内容</string>
+    <string name="cmd_name_data_required">命令名称和内容不能为空</string>
+    <string name="cmd_invalid_format">命令「%1$s」HEX 格式错误</string>
+    <string name="cmd_sent">已发送命令「%1$s」</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="delete">删除</string>
+
+    <!-- UUID 设置 -->
+    <string name="uuid_dialog_hint">BLE 连接使用。留空则自动识别常见 UART 服务(NUS / HM-10 / JDY-08),也可手动指定。</string>
+    <string name="uuid_service_hint">服务 UUID(如 6E400001-B5A3-F393-E0A9-E50E24DCCA9E)</string>
+    <string name="uuid_write_hint">写特征 UUID(可留空自动识别)</string>
+    <string name="uuid_notify_hint">通知特征 UUID(可留空自动识别)</string>
+    <string name="uuid_invalid">UUID 格式错误</string>
+    <string name="uuid_saved">UUID 设置已保存</string>
+</resources>

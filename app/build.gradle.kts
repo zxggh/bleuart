@@ -11,8 +11,20 @@ android {
         applicationId = "com.example.bluetoothserial"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
+    }
+
+    // 固定调试签名密钥(已提交到仓库),保证本地与 CI 每次构建签名一致,
+    // 用户才能覆盖安装 / 自动更新。正式发布请改用独立 release 密钥。
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+            storeType = "pkcs12"
+        }
     }
 
     buildTypes {

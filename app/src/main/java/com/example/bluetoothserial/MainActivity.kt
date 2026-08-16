@@ -220,6 +220,23 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    /** 显示当前版本与更新源信息(便于核对安装的是哪个版本) */
+    fun showAboutDialog() {
+        val version = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.0"
+        } catch (_: Exception) {
+            "1.0.0"
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.app_name)
+            .setMessage(
+                getString(R.string.about_version, version) + "\n" +
+                    getString(R.string.about_update_source, currentUpdateUrl())
+            )
+            .setPositiveButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun autoCheckUpdate() {
         val prefs = updatePrefs()
         val last = prefs.getLong("last_check", 0L)

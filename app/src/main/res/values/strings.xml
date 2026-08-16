@@ -174,4 +174,9 @@
     <string name="update_url_setting">更新地址</string>
     <string name="update_url_hint">填写 version.json 的完整 URL(留空则使用默认 Gitee 地址)。\n例: https://gitee.com/用户名/仓库名/raw/master/version.json</string>
     <string name="update_url_saved">更新地址已保存</string>
+
+    <!-- 关于 -->
+    <string name="about_menu">关于</string>
+    <string name="about_version">版本 %1$s</string>
+    <string name="about_update_source">更新源: %1$s</string>
 </resources>

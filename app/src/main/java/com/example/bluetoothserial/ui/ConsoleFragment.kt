@@ -235,7 +235,7 @@ class ConsoleFragment : Fragment() {
 
     /** 切换格式/编码/时间戳后重建整个显示区 */
     private fun renderFromQueue() {
-        logBuilder.setLength(0)
+        logBuilder.delete(0, logBuilder.length)
         displayQueue.forEach {
             when (it) {
                 is DisplayItem.Rx -> logBuilder.append(renderRx(it.rx))
@@ -266,7 +266,7 @@ class ConsoleFragment : Fragment() {
 
     private fun clearReceive() {
         displayQueue.clear()
-        logBuilder.setLength(0)
+        logBuilder.delete(0, logBuilder.length)
         rxBytesTotal = 0
         rxChunks = 0
         binding.tvReceive.text = getString(R.string.receive_placeholder)

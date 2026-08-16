@@ -6,7 +6,7 @@
     <string name="nav_commands">命令</string>
     <string name="nav_devices">设备</string>
     <string name="nav_modbus">Modbus</string>
-    <string name="nav_settings">设置</string>
+    <string name="nav_settings">调试器设置</string>
 
     <!-- 连接状态 -->
     <string name="not_connected">未连接</string>
@@ -26,7 +26,7 @@
     <string name="clear">清屏</string>
     <string name="copy">复制</string>
     <string name="copied">已复制到剪贴板</string>
-    <string name="rx_stats">%1$d B · %2$d 条</string>
+    <string name="stats_rxtx">收 %1$d B · 发 %2$d B</string>
     <string name="format_hex">HEX</string>
     <string name="format_text">文本</string>
     <string name="more_menu">更多</string>
@@ -65,7 +65,7 @@
     <string name="cmd_name_hint">命令名称</string>
     <string name="cmd_data_hint">命令内容</string>
     <string name="cmd_data_hex_hint">HEX 内容,如 01 03 00 00 00 02 C4 0B</string>
-    <string name="cmd_data_ascii_hint">文本内容(按调试页所选编码发送)</string>
+    <string name="cmd_data_ascii_hint">文本内容(按调试页发送编码)</string>
     <string name="cmd_name_data_required">命令名称和内容不能为空</string>
     <string name="cmd_invalid_format">命令「%1$s」HEX 格式错误</string>
     <string name="cmd_sent">已发送命令「%1$s」</string>
@@ -83,8 +83,8 @@
     <string name="uuid_invalid">UUID 格式错误</string>
     <string name="uuid_saved">设置已保存</string>
 
-    <!-- 专有模块设置页 -->
-    <string name="module_hint">专有模块(E104-BT5005A 等,服务 FFF0,特征 fff1 接收通知 / fff2 写入发送 / fff3 双向配置)。\n透传模式: 自动启用 fff1 通知 + fff2 写入,关闭 fff3。\n设置模式: 自动关闭 fff1/fff2,启用 fff3 写入 + 通知(空中配置通道)。\nUUID 支持 4 位缩写,空中配置前必须先发送认证指令。</string>
+    <!-- 专有模块调试器设置页 -->
+    <string name="module_hint">专有模块(E104-BT5005A 等,服务 FFF0,特征 fff1 接收通知 / fff2 写入发送 / fff3 双向配置)。\n透传模式: 自动启用 fff1 通知 + fff2 写入,关闭 fff3。\n设置模式: 自动关闭 fff1/fff2,启用 fff3 写入 + 通知(空中配置通道),进入后 App 自动发送认证指令并读取当前串口参数。</string>
     <string name="module_status">当前状态: %1$s</string>
     <string name="module_status_none">未连接 BLE 设备</string>
     <string name="module_status_normal">已连接,未检测到专有模块特征(fff1/fff2/fff3),模式切换不可用</string>
@@ -104,9 +104,42 @@
     <string name="module_uuid_cfg">配置双向特征(默认 fff3)</string>
     <string name="module_auth_label">空中配置认证密码(默认 123456)</string>
     <string name="module_auth_send">发送认证指令</string>
-    <string name="module_auth_sent">已发送 %1$s,等待模块返回 +OK</string>
+    <string name="module_auth_sent">已发送 %1$s,等待模块回复…</string>
     <string name="module_auth_empty">请输入认证密码</string>
-    <string name="module_at_hint">空中配置: 进入设置模式后先「发送认证指令」,模块返回 +OK 即认证成功。\n然后发送 AT 配置指令(如 at+baud=115200、at+role=0、at+name=xxx)。\n注意: AT 指令无需加回车换行,发送时行尾请选「无」。</string>
+    <string name="module_at_hint">进入设置模式后 App 会自动: ①发送认证指令(at+auth=123456) ②读取当前串口参数(at+baud? / at+pari?)。\n也可以手动选择波特率或输入其它 AT 指令点「设置」发送(AT 指令无需回车换行,行尾选「无」)。</string>
+    <string name="module_uart_info_label">当前串口参数</string>
+    <string name="module_uart_info">%1$s</string>
+    <string name="module_baud_label">波特率(重启生效)</string>
+    <string name="module_baud_set">设置波特率</string>
+    <string name="module_cmd_hint">其它 AT 配置指令(如 at+name=xxx、at+role=0)</string>
+    <string name="module_cmd_set">设置</string>
+    <string name="module_auth_ok">空中配置认证成功</string>
+    <string name="module_querying">认证成功,正在读取模块串口参数…</string>
+    <string name="module_auth_fail">认证失败(错误%1$d:%2$s),请检查密码</string>
+    <string name="module_reply_ok">设置成功: %1$s</string>
+    <string name="module_reply_err">设置失败(错误%1$d:%2$s)</string>
+    <string name="module_reply_timeout">未收到模块回复(超时),请重试</string>
+    <string name="module_reply_unknown">回复无法识别: %1$s</string>
+    <string name="module_baud_set_ok">波特率设置成功,重启后生效</string>
+
+    <string-array name="err_codes">
+        <item>当前正在解析 AT,指令间隔太短</item>
+        <item>指令不存在,请检查指令字符</item>
+        <item>参数长度错误</item>
+        <item>无效参数,超出取值范围</item>
+        <item>空中配置认证失败,密码错误</item>
+        <item>当前角色不支持该指令</item>
+        <item>未知错误</item>
+        <item>保存参数错误</item>
+        <item>指令存在但不支持该操作</item>
+        <item>未连接</item>
+        <item>MAC 地址已存在</item>
+        <item>MAC 列表已满</item>
+        <item>MAC 地址不存在</item>
+        <item>连接失败</item>
+        <item>超过当前连接最大数量</item>
+        <item>设备不存在</item>
+    </string-array>
 
     <!-- Modbus RTU 页 -->
     <string name="modbus_hint">Modbus RTU 帧生成:填写参数后自动计算 CRC16,点「发送」按 HEX 发送(无行尾)。</string>
@@ -122,4 +155,6 @@
     <string name="modbus_err_slave">从站地址无效(1-247)</string>
     <string name="modbus_err_start">起始地址无效(0-65535)</string>
     <string name="modbus_err_value">数量/值无效</string>
+    <string name="modbus_rx_label">接收(HEX)</string>
+    <string name="modbus_clear">清屏</string>
 </resources>

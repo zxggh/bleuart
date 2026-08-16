@@ -83,10 +83,10 @@ class CommandFragment : Fragment() {
         DataFormat.ASCII -> HexUtils.encode(cmd.data, currentCharset())
     }
 
-    /** 读取调试页选择的全局编码 */
+    /** 读取调试页选择的发送编码 */
     private fun currentCharset(): TextCharset {
         val name = requireContext().getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
-            .getString("charset", "UTF-8") ?: "UTF-8"
+            .getString("charset_tx", "UTF-8") ?: "UTF-8"
         return TextCharset.fromName(name)
     }
 

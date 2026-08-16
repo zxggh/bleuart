@@ -4,37 +4,62 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.example.bluetoothserial.R
 import com.example.bluetoothserial.bt.ConnectionManager
 import com.example.bluetoothserial.bt.ConnState
 import com.example.bluetoothserial.bt.ConnType
 import com.example.bluetoothserial.bt.ModuleMode
+import com.example.bluetoothserial.bt.RxData
 import com.example.bluetoothserial.data.BleSettingsPrefs
 import com.example.bluetoothserial.databinding.FragmentModuleSettingsBinding
 import com.example.bluetoothserial.model.TextCharset
 import com.example.bluetoothserial.util.HexUtils
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
- * 专有模块设置页(E104-BT5005A 等)。
+ * 专有模块调试器设置页(E104-BT5005A 等)。
  *
  * 专有模块特征(服务 FFF0): fff1 接收通知 / fff2 写入发送 / fff3 双向配置。
  * - 透传模式: 启用 fff1 通知 + fff2 写入,关闭 fff3(连接后默认);
  * - 设置模式: 关闭 fff1/fff2,启用 fff3 写入 + 通知(空中配置通道)。
- *   空中配置前必须先发送认证指令(at+auth=123456),模块返回 +OK 即认证成功;
- *   AT 指令无需加回车换行,发送时行尾选「无」。
- * 模式切换由 BleUartClient 通过重新 discoverServices + 动态绑定/解绑特征通道完成。
+ *   进入设置模式后 App 自动: ①发送认证指令 at+auth=密码 ②认证成功后自动查询
+ *   at+baud? / at+pari? 并显示当前串口参数(如 115200,8,1,无校验)。
+ *   所有设置指令根据模块回复(+OK / +ERR=[NUM] / 超时)给出对应提示。
  */
 class ModuleSettingsFragment : Fragment() {
 
     private var _binding: FragmentModuleSettingsBinding? = null
     private val binding get() = _binding!!
 
+    /** 波特率表(与数据手册 AT+BAUD 参数一致) */
+    private data class Baud(val index: Int, val bps: String)
+
+    private val baudList = listOf(
+        Baud(0, "1200"), Baud(1, "2400"), Baud(2, "4800"), Baud(3, "9600"),
+        Baud(4, "14400"), Baud(5, "19200"), Baud(6, "28800"), Baud(7, "38400"),
+        Baud(8, "57600"), Baud(9, "76800"), Baud(10, "115200"), Baud(11, "230400"),
+        Baud(12, "250000"), Baud(13, "460800")
+    )
+
+    /** 待确认的命令类型 */
+    private enum class Pending { NONE, AUTH, BAUD_QUERY, PARI_QUERY, BAUD_SET, CMD }
+
+    private var pending = Pending.NONE
+    private val replyBuffer = StringBuilder()
+    private var timeoutJob: Job? = null
+
     private val stateListener: (ConnState) -> Unit = { refreshStatus() }
-    private val modeListener: (ModuleMode) -> Unit = { refreshStatus() }
+    private val modeListener: (ModuleMode) -> Unit = { onModeChanged(it) }
+    private val dataListener: (RxData) -> Unit = { onModuleData(it.bytes) }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentModuleSettingsBinding.inflate(inflater, container, false)
@@ -50,9 +75,35 @@ class ModuleSettingsFragment : Fragment() {
         binding.etModuleTx.setText(if (s.writeUuid.isBlank()) "fff2" else s.writeUuid)
         binding.etModuleCfg.setText(if (s.cfgUuid.isBlank()) "fff3" else s.cfgUuid)
 
+        binding.spBaud.adapter = ArrayAdapter(
+            requireContext(), android.R.layout.simple_spinner_item, baudList.map { it.bps }
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        binding.spBaud.setSelection(10) // 默认 115200
+
         binding.btnEnterConfig.setOnClickListener { confirmEnterConfig() }
         binding.btnExitConfig.setOnClickListener { ConnectionManager.enterPassthroughMode() }
-        binding.btnSendAuth.setOnClickListener { sendAuthCommand() }
+        binding.btnSendAuth.setOnClickListener {
+            val pwd = binding.etModuleAuth.text?.toString()?.trim().orEmpty()
+            if (pwd.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.module_auth_empty, Toast.LENGTH_SHORT).show()
+            } else {
+                sendAt("at+auth=$pwd", Pending.AUTH)
+            }
+        }
+        binding.btnSetBaud.setOnClickListener {
+            val idx = binding.spBaud.selectedItemPosition.coerceIn(0, baudList.size - 1)
+            sendAt("at+baud=${baudList[idx].index}", Pending.BAUD_SET)
+        }
+        binding.btnSetCmd.setOnClickListener {
+            val cmd = binding.etModuleCmd.text?.toString()?.trim().orEmpty()
+            if (cmd.isEmpty()) {
+                Toast.makeText(requireContext(), R.string.input_empty, Toast.LENGTH_SHORT).show()
+            } else {
+                sendAt(cmd, Pending.CMD)
+            }
+        }
         binding.btnSaveModuleUuid.setOnClickListener { saveUuidConfig() }
 
         refreshStatus()
@@ -62,18 +113,188 @@ class ModuleSettingsFragment : Fragment() {
         super.onResume()
         ConnectionManager.addStateListener(stateListener)
         ConnectionManager.addModuleModeListener(modeListener)
+        ConnectionManager.addDataListener(dataListener)
     }
 
     override fun onPause() {
         super.onPause()
         ConnectionManager.removeStateListener(stateListener)
         ConnectionManager.removeModuleModeListener(modeListener)
+        ConnectionManager.removeDataListener(dataListener)
+        timeoutJob?.cancel()
+        pending = Pending.NONE
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        timeoutJob?.cancel()
         _binding = null
     }
+
+    // ================= 模式与自动流程 =================
+
+    private fun onModeChanged(mode: ModuleMode) {
+        refreshStatus()
+        // 进入设置模式后,App 自动发送空中配置认证指令
+        if (mode == ModuleMode.CONFIG && pending == Pending.NONE) {
+            autoAuth()
+        }
+    }
+
+    private fun autoAuth() {
+        val pwd = binding.etModuleAuth.text?.toString()?.trim().orEmpty().ifEmpty { "123456" }
+        // 等待 discoverServices 重新绑定 fff3 通道完成后再发送
+        viewLifecycleOwner.lifecycleScope.launch {
+            delay(800)
+            if (pending == Pending.NONE && ConnectionManager.state.type == ConnType.BLE) {
+                sendAt("at+auth=$pwd", Pending.AUTH)
+            }
+        }
+    }
+
+    private fun confirmEnterConfig() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.nav_settings)
+            .setMessage(R.string.module_set_sw_hint)
+            .setPositiveButton(R.string.module_enter_confirm) { _, _ ->
+                ConnectionManager.enterModuleConfigMode()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    // ================= 指令发送与回复解析 =================
+
+    private fun sendAt(cmd: String, type: Pending) {
+        val bytes = HexUtils.encode(cmd, TextCharset.UTF8)
+        if (!ConnectionManager.send(bytes)) {
+            Toast.makeText(requireContext(), R.string.not_connected_msg, Toast.LENGTH_SHORT).show()
+            return
+        }
+        pending = type
+        replyBuffer.setLength(0)
+        startTimeout(type)
+    }
+
+    private fun startTimeout(type: Pending) {
+        timeoutJob?.cancel()
+        timeoutJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(REPLY_TIMEOUT_MS)
+            if (pending == type) {
+                pending = Pending.NONE
+                Toast.makeText(requireContext(), R.string.module_reply_timeout, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun onModuleData(bytes: ByteArray) {
+        if (pending == Pending.NONE) return
+        replyBuffer.append(HexUtils.decode(bytes, TextCharset.UTF8))
+        var text = replyBuffer.toString()
+        while (pending != Pending.NONE) {
+            val idx = text.indexOf('\n')
+            if (idx < 0) break
+            val line = text.substring(0, idx).trim('\r', '\n', ' ')
+            text = text.substring(idx + 1)
+            if (line.isNotEmpty()) processReply(line)
+        }
+        replyBuffer.setLength(0)
+        replyBuffer.append(text)
+    }
+
+    private fun processReply(line: String) {
+        if (line.startsWith("STA:")) return // 状态打印,忽略
+        when {
+            line.startsWith("+OK") -> onOk(line)
+            line.startsWith("+ERR=") -> {
+                val num = line.removePrefix("+ERR=").trim().toIntOrNull() ?: -1
+                onErr(num)
+            }
+            else -> {
+                val t = pending
+                pending = Pending.NONE
+                Toast.makeText(
+                    requireContext(),
+                    getString(R.string.module_reply_unknown, line),
+                    Toast.LENGTH_SHORT
+                ).show()
+                if (t == Pending.AUTH) {
+                    Toast.makeText(requireContext(), "认证未成功,请检查密码后重试", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun onOk(line: String) {
+        when (pending) {
+            Pending.AUTH -> {
+                pending = Pending.NONE
+                Toast.makeText(requireContext(), R.string.module_auth_ok, Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), R.string.module_querying, Toast.LENGTH_SHORT).show()
+                // 认证成功 -> 自动读取串口参数
+                sendAt("at+baud?", Pending.BAUD_QUERY)
+            }
+            Pending.BAUD_QUERY -> {
+                val value = line.substringAfter("=", "").trim()
+                val idx = value.toIntOrNull()
+                if (idx != null && idx in 0 until baudList.size) {
+                    binding.spBaud.setSelection(idx)
+                }
+                pending = Pending.NONE
+                sendAt("at+pari?", Pending.PARI_QUERY)
+            }
+            Pending.PARI_QUERY -> {
+                val value = line.substringAfter("=", "").trim()
+                val parity = if (value == "1") "偶校验" else "无校验"
+                pending = Pending.NONE
+                showUartInfo(parity)
+            }
+            Pending.BAUD_SET -> {
+                pending = Pending.NONE
+                Toast.makeText(requireContext(), R.string.module_baud_set_ok, Toast.LENGTH_SHORT).show()
+            }
+            Pending.CMD -> {
+                val t = line
+                pending = Pending.NONE
+                Toast.makeText(requireContext(), getString(R.string.module_reply_ok, t), Toast.LENGTH_SHORT).show()
+            }
+            Pending.NONE -> {}
+        }
+    }
+
+    private fun onErr(num: Int) {
+        val msg = errText(num)
+        val t = pending
+        pending = Pending.NONE
+        if (t == Pending.AUTH) {
+            Toast.makeText(
+                requireContext(),
+                getString(R.string.module_auth_fail, num, msg),
+                Toast.LENGTH_LONG
+            ).show()
+        } else {
+            Toast.makeText(
+                requireContext(),
+                getString(R.string.module_reply_err, num, msg),
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun showUartInfo(parity: String) {
+        val sel = binding.spBaud.selectedItemPosition.coerceIn(0, baudList.size - 1)
+        val info = "${baudList[sel].bps},8,1,$parity"
+        binding.tvModuleUartInfo.text = getString(R.string.module_uart_info, info)
+        Toast.makeText(requireContext(), getString(R.string.module_uart_info, info), Toast.LENGTH_LONG).show()
+    }
+
+    /** 错误代码 -> 含义(数据手册 6.2 错误代码表) */
+    private fun errText(num: Int): String {
+        val arr = resources.getStringArray(R.array.err_codes)
+        return if (num in arr.indices) arr[num] else "未知错误($num)"
+    }
+
+    // ================= 状态刷新 =================
 
     private fun refreshStatus() {
         val s = ConnectionManager.state
@@ -96,35 +317,7 @@ class ModuleSettingsFragment : Fragment() {
         )
     }
 
-    private fun confirmEnterConfig() {
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle(R.string.nav_settings)
-            .setMessage(R.string.module_set_sw_hint)
-            .setPositiveButton(R.string.module_enter_confirm) { _, _ ->
-                ConnectionManager.enterModuleConfigMode()
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    /** 发送空中配置认证指令 at+auth=密码(无行尾) */
-    private fun sendAuthCommand() {
-        val pwd = binding.etModuleAuth.text?.toString()?.trim().orEmpty()
-        if (pwd.isEmpty()) {
-            Toast.makeText(requireContext(), R.string.module_auth_empty, Toast.LENGTH_SHORT).show()
-            return
-        }
-        val cmd = "at+auth=$pwd"
-        if (ConnectionManager.send(HexUtils.encode(cmd, TextCharset.UTF8))) {
-            Toast.makeText(
-                requireContext(),
-                getString(R.string.module_auth_sent, cmd),
-                Toast.LENGTH_SHORT
-            ).show()
-        } else {
-            Toast.makeText(requireContext(), R.string.not_connected_msg, Toast.LENGTH_SHORT).show()
-        }
-    }
+    // ================= UUID 保存 =================
 
     private fun saveUuidConfig() {
         val service = binding.etModuleService.text?.toString()?.trim().orEmpty()
@@ -148,5 +341,9 @@ class ModuleSettingsFragment : Fragment() {
             cur.copy(serviceUuid = service, notifyUuid = rx, writeUuid = tx, cfgUuid = cfg)
         )
         Toast.makeText(requireContext(), R.string.module_saved, Toast.LENGTH_SHORT).show()
+    }
+
+    companion object {
+        private const val REPLY_TIMEOUT_MS = 3000L
     }
 }

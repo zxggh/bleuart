@@ -138,5 +138,48 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="@string/modbus_send" />
+
+        <!-- 接收窗口 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/modbus_rx_label"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnModbusClear"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:text="@string/modbus_clear" />
+        </LinearLayout>
+
+        <ScrollView
+            android:id="@+id/scrollModbusRx"
+            android:layout_width="match_parent"
+            android:layout_height="240dp"
+            android:layout_marginTop="4dp"
+            android:background="?attr/colorSurfaceContainerHighest"
+            android:fillViewport="true"
+            android:padding="8dp">
+
+            <TextView
+                android:id="@+id/tvModbusRx"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:textIsSelectable="true"
+                android:textSize="12sp" />
+        </ScrollView>
     </LinearLayout>
 </ScrollView>

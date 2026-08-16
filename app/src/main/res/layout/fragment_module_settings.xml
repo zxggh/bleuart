@@ -32,6 +32,16 @@
             android:layout_marginTop="4dp"
             android:textSize="13sp" />
 
+        <TextView
+            android:id="@+id/tvModuleUartInfo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="monospace"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -62,7 +72,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="12dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -85,6 +95,63 @@
                 android:layout_marginStart="8dp"
                 android:minWidth="0dp"
                 android:text="@string/module_auth_send" />
+        </LinearLayout>
+
+        <!-- 波特率设置 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/module_baud_label"
+                android:textSize="14sp" />
+
+            <Spinner
+                android:id="@+id/spBaud"
+                android:layout_width="140dp"
+                android:layout_height="wrap_content" />
+
+            <Button
+                android:id="@+id/btnSetBaud"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:minWidth="0dp"
+                android:text="@string/module_baud_set" />
+        </LinearLayout>
+
+        <!-- 其它 AT 指令 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/etModuleCmd"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="monospace"
+                android:hint="@string/module_cmd_hint"
+                android:inputType="text"
+                android:maxLines="1"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btnSetCmd"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:minWidth="0dp"
+                android:text="@string/module_cmd_set" />
         </LinearLayout>
 
         <TextView

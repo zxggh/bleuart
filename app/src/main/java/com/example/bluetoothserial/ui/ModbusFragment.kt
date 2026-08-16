@@ -11,18 +11,23 @@ import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
 import com.example.bluetoothserial.R
 import com.example.bluetoothserial.bt.ConnectionManager
+import com.example.bluetoothserial.bt.RxData
 import com.example.bluetoothserial.databinding.FragmentModbusBinding
 import com.example.bluetoothserial.util.Crc16
 import com.example.bluetoothserial.util.HexUtils
+import com.example.bluetoothserial.util.TimeFormat
 import java.io.ByteArrayOutputStream
 
 /**
- * Modbus RTU 调试页:常规功能码 + 自动 CRC16 校验
+ * Modbus RTU 调试页:常规功能码 + 自动 CRC16 校验 + 接收窗口
  */
 class ModbusFragment : Fragment() {
 
     private var _binding: FragmentModbusBinding? = null
     private val binding get() = _binding!!
+
+    private val rxBuffer = StringBuilder()
+    private val dataListener: (RxData) -> Unit = { appendRx(it) }
 
     /** 功能码定义: read=读类, multi=写多类 */
     private data class Func(val code: Int, val label: String, val read: Boolean, val multi: Boolean)
@@ -69,9 +74,44 @@ class ModbusFragment : Fragment() {
         binding.etStart.doAfterTextChanged { updatePreview() }
         binding.etValue.doAfterTextChanged { updatePreview() }
         binding.btnSendModbus.setOnClickListener { sendFrame() }
+        binding.btnModbusClear.setOnClickListener { clearRx() }
 
         updatePreview()
     }
+
+    override fun onResume() {
+        super.onResume()
+        ConnectionManager.addDataListener(dataListener)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ConnectionManager.removeDataListener(dataListener)
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+
+    // ================= 接收窗口 =================
+
+    private fun appendRx(rx: RxData) {
+        rxBuffer.append("[").append(TimeFormat.stamp(rx.timestamp)).append("] ")
+            .append(HexUtils.toHex(rx.bytes)).append("\n")
+        if (rxBuffer.length > MAX_RX_CHARS) {
+            rxBuffer.delete(0, rxBuffer.length - MAX_RX_CHARS)
+        }
+        binding.tvModbusRx.text = rxBuffer.toString()
+        binding.scrollModbusRx.post { binding.scrollModbusRx.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun clearRx() {
+        rxBuffer.setLength(0)
+        binding.tvModbusRx.text = ""
+    }
+
+    // ================= 帧生成与发送 =================
 
     private fun currentFunc(): Func = functions[binding.spFunction.selectedItemPosition.coerceIn(0, functions.size - 1)]
 
@@ -169,8 +209,7 @@ class ModbusFragment : Fragment() {
         }
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
+    companion object {
+        private const val MAX_RX_CHARS = 300_000
     }
 }

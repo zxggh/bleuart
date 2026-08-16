@@ -13,6 +13,7 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.PopupMenu
+import android.widget.Spinner
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
@@ -46,8 +47,8 @@ sealed class DisplayItem {
 }
 
 /**
- * 调试页:连接状态、接收区(HEX/文本 + 编码 + 时间戳 + 收发颜色区分)、
- * 发送区(HEX/文本 + 行尾 + 定时发送 + 历史记录)、BLE 设置(自定义 UUID + MTU)
+ * 调试页:连接状态、接收区(HEX/文本 + 接收编码 + 时间戳 + 收发颜色区分)、
+ * 发送区(HEX/文本 + 发送编码 + 行尾 + 定时发送 + 历史记录)、BLE 设置(自定义 UUID + MTU)
  */
 class ConsoleFragment : Fragment() {
 
@@ -57,12 +58,13 @@ class ConsoleFragment : Fragment() {
     private val displayQueue = ArrayDeque<DisplayItem>()
     private val logBuilder = SpannableStringBuilder()
     private var rxBytesTotal = 0L
-    private var rxChunks = 0L
+    private var txBytesTotal = 0L
     private var rxFormatHex = true
     private var txFormatHex = true
     private var paused = false
     private var loopJob: Job? = null
-    private var charset: TextCharset = TextCharset.UTF8
+    private var rxCharset: TextCharset = TextCharset.UTF8
+    private var txCharset: TextCharset = TextCharset.UTF8
     private lateinit var historyRepo: SendHistoryRepository
 
     private val lineEndingLabels = arrayOf("无", "\\r", "\\n", "\\r\\n")
@@ -95,29 +97,9 @@ class ConsoleFragment : Fragment() {
         }
         binding.toggleTxFormat.check(R.id.txHex)
 
-        // 字符编码(收发共用)
-        val charsetEntries = TextCharset.entries
-        binding.spCharset.adapter = ArrayAdapter(
-            requireContext(), android.R.layout.simple_spinner_item, charsetEntries.map { it.label }
-        ).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        }
-        val savedCharset = TextCharset.fromName(
-            requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
-                .getString("charset", "UTF-8") ?: "UTF-8"
-        )
-        charset = savedCharset
-        binding.spCharset.setSelection(charsetEntries.indexOfFirst { it == savedCharset }.coerceAtLeast(0))
-        binding.spCharset.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                charset = charsetEntries[position]
-                requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
-                    .edit().putString("charset", charset.javaName).apply()
-                renderFromQueue()
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
+        // 接收编码 / 发送编码(独立)
+        rxCharset = setupCharsetSpinner(binding.spCharset, KEY_CHARSET_RX)
+        txCharset = setupCharsetSpinner(binding.spTxCharset, KEY_CHARSET_TX)
 
         binding.spLineEnd.adapter = ArrayAdapter(
             requireContext(), android.R.layout.simple_spinner_item, lineEndingLabels
@@ -138,6 +120,37 @@ class ConsoleFragment : Fragment() {
         binding.etInterval.doAfterTextChanged { if (binding.cbLoop.isChecked) restartLoop() }
 
         updateConnectionUi(ConnectionManager.state)
+    }
+
+    /** 初始化编码下拉框,返回当前选中的编码 */
+    private fun setupCharsetSpinner(spinner: Spinner, prefsKey: String): TextCharset {
+        val entries = TextCharset.entries
+        spinner.adapter = ArrayAdapter(
+            requireContext(), android.R.layout.simple_spinner_item, entries.map { it.label }
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val saved = TextCharset.fromName(
+            requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
+                .getString(prefsKey, "UTF-8") ?: "UTF-8"
+        )
+        spinner.setSelection(entries.indexOfFirst { it == saved }.coerceAtLeast(0))
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val cs = entries[position]
+                requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
+                    .edit().putString(prefsKey, cs.javaName).apply()
+                if (prefsKey == KEY_CHARSET_RX) {
+                    rxCharset = cs
+                    renderFromQueue()
+                } else {
+                    txCharset = cs
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        return saved
     }
 
     override fun onResume() {
@@ -199,13 +212,12 @@ class ConsoleFragment : Fragment() {
     private fun appendReceived(rx: RxData) {
         displayQueue.addLast(DisplayItem.Rx(rx))
         while (displayQueue.size > 5000) displayQueue.removeFirst()
-        rxChunks++
         rxBytesTotal += rx.bytes.size
 
         logBuilder.append(renderRx(rx))
         trimLog()
         binding.tvReceive.text = logBuilder
-        binding.tvRxStats.text = getString(R.string.rx_stats, rxBytesTotal, rxChunks)
+        updateStats()
         autoScroll()
     }
 
@@ -225,7 +237,7 @@ class ConsoleFragment : Fragment() {
     private fun renderRx(rx: RxData): SpannableStringBuilder {
         val sb = SpannableStringBuilder()
         val head = if (binding.cbTimestamp.isChecked) "[${TimeFormat.stamp(rx.timestamp)}] RX< " else "RX< "
-        val body = if (rxFormatHex) HexUtils.toHex(rx.bytes) else HexUtils.decode(rx.bytes, charset)
+        val body = if (rxFormatHex) HexUtils.toHex(rx.bytes) else HexUtils.decode(rx.bytes, rxCharset)
         sb.append(head).append(body).append("\n")
         if (sb.length > 1) {
             sb.setSpan(ForegroundColorSpan(RX_COLOR), 0, sb.length - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -244,8 +256,12 @@ class ConsoleFragment : Fragment() {
         }
         trimLog()
         binding.tvReceive.text = if (logBuilder.isEmpty()) getString(R.string.receive_placeholder) else logBuilder
-        binding.tvRxStats.text = getString(R.string.rx_stats, rxBytesTotal, rxChunks)
+        updateStats()
         autoScroll(force = true)
+    }
+
+    private fun updateStats() {
+        binding.tvRxStats.text = getString(R.string.stats_rxtx, rxBytesTotal, txBytesTotal)
     }
 
     private fun trimLog() {
@@ -268,9 +284,9 @@ class ConsoleFragment : Fragment() {
         displayQueue.clear()
         logBuilder.delete(0, logBuilder.length)
         rxBytesTotal = 0
-        rxChunks = 0
+        txBytesTotal = 0
         binding.tvReceive.text = getString(R.string.receive_placeholder)
-        binding.tvRxStats.text = getString(R.string.rx_stats, 0L, 0L)
+        updateStats()
     }
 
     private fun copyReceive() {
@@ -293,9 +309,7 @@ class ConsoleFragment : Fragment() {
         menu.menu.add(0, 3, 2, R.string.copy)
         menu.setOnMenuItemClickListener { item ->
             when (item.itemId) {
-                1 -> {
-                    paused = !paused
-                }
+                1 -> paused = !paused
                 2 -> clearReceive()
                 3 -> copyReceive()
             }
@@ -335,12 +349,14 @@ class ConsoleFragment : Fragment() {
     }
 
     private fun appendTxSent(bytes: ByteArray) {
-        val tx = DisplayItem.Tx(bytes, System.currentTimeMillis(), txFormatHex, charset.javaName)
+        val tx = DisplayItem.Tx(bytes, System.currentTimeMillis(), txFormatHex, txCharset.javaName)
         displayQueue.addLast(tx)
         while (displayQueue.size > 5000) displayQueue.removeFirst()
+        txBytesTotal += bytes.size
         logBuilder.append(renderTx(tx))
         trimLog()
         binding.tvReceive.text = logBuilder
+        updateStats()
         autoScroll()
     }
 
@@ -348,7 +364,7 @@ class ConsoleFragment : Fragment() {
         val base: ByteArray = if (txFormatHex) {
             HexUtils.parseHex(input) ?: return null
         } else {
-            HexUtils.encode(input, charset)
+            HexUtils.encode(input, txCharset)
         }
         val ending = lineEndingValues[binding.spLineEnd.selectedItemPosition.coerceIn(0, lineEndingValues.size - 1)]
         return if (ending.isEmpty()) base else base + ending.toByteArray(Charsets.UTF_8)
@@ -437,5 +453,7 @@ class ConsoleFragment : Fragment() {
         private const val MAX_LOG_CHARS = 400_000
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
+        private const val KEY_CHARSET_RX = "charset_rx"
+        private const val KEY_CHARSET_TX = "charset_tx"
     }
 }

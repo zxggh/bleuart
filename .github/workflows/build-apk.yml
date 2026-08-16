@@ -20,10 +20,12 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK (按 .sdkmanager 安装组件)
+      # 显式指定 SDK 组件,不依赖仓库里的任何隐藏文件
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          sdkmanager-file: .sdkmanager
+          api-level: 34
+          build-tools-version: 34.0.0
 
       - name: Set up Gradle 8.7 (无需本地 wrapper)
         uses: gradle/actions/setup-gradle@v3

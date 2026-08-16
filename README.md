@@ -97,12 +97,59 @@ app/src/main/java/com/example/bluetoothserial/
 ### 方式一：GitHub Actions（推荐，免费）
 
 1. 在 [github.com](https://github.com) 注册账号，新建一个仓库（Public 或 Private 均可）。
-2. 上传项目文件：可以用 git 推送，也可以直接在网页上 **Add file → Upload files** 把整个 `BluetoothSerialAssistant/` 目录拖进去。
-3. 打开仓库的 **Actions** 标签页，即可看到 `Build APK` 工作流正在自动运行（仓库里已有 `.github/workflows/build-apk.yml`）。
-4. 构建约 3~5 分钟。完成后进入该次运行页面，在底部 **Artifacts** 区域下载 `bluetooth-serial-apk`，解压即得 `app-debug.apk`。
-5. 以后每次推送代码都会自动重新构建；也可在 Actions 页面点 **Run workflow** 手动触发。
+2. 上传项目文件：可以用 git 推送，也可以直接在网页上 **Add file → Upload files** 把整个 `BluetoothSerialAssistant/` 目录**里面的内容**拖进去（在本地文件夹里全选再拖，不要把文件夹本身拖进去）。
+3. ⚠️ **重要：网页上传会自动跳过所有点开头的隐藏文件**（`.github`、`.gitignore` 等）。若文件树里没有 `.github` 文件夹，请手动创建：**Add file → Create new file**，文件名直接输入完整路径 `.github/workflows/build-apk.yml`，把下方的工作流代码粘进去（Create new file 支持输入点开头文件名）。
+4. 打开仓库的 **Actions** 标签页，即可看到 `Build APK` 工作流正在自动运行。
+5. 构建约 3~5 分钟。完成后进入该次运行页面，在底部 **Artifacts** 区域下载 `bluetooth-serial-apk`，解压即得 `app-debug.apk`。
+6. 以后每次推送代码都会自动重新构建；也可在 Actions 页面点 **Run workflow** 手动触发。
 
 > 注意：免费额度为 Public 仓库无限、Private 仓库每月 2000 分钟，个人使用完全足够。
+
+**工作流代码（`build-apk.yml` 内容，不含对隐藏文件的依赖）：**
+
+```yaml
+name: Build APK
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          build-tools-version: 34.0.0
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bluetooth-serial-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+```
 
 ### 方式二：GitLab CI（备选）
 
@@ -134,3 +181,4 @@ app/src/main/java/com/example/bluetoothserial/
 - **BLE 连上但收发无数据**：模块的 UART 服务不在自动识别列表，请在「UUID」中手动填写服务/特征 UUID。
 - **经典蓝牙连接失败**：确认模块处于从机模式且未与其他设备连接；本 App 已内置 channel=1 回退。
 - **HEX 发送报错**：HEX 字符串字符数必须为偶数（如 `01 03`，不能是 `0 1 3` 的奇数形式）。
+- **网页上传后 Actions 编译失败**：多半是点开头文件（`.github`、`.sdkmanager`）被网页上传跳过。修复方法：用 **Add file → Create new file** 手动创建 `.github/workflows/build-apk.yml`（文件名可直接输入完整路径），内容见上方「在线编译」章节；新版工作流不依赖任何隐藏文件，建好后在 Actions 页对失败的任务点 **Re-run all jobs** 即可。

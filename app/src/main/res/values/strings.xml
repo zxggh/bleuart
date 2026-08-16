@@ -84,7 +84,7 @@
     <string name="uuid_saved">设置已保存</string>
 
     <!-- 专有模块设置页 -->
-    <string name="module_hint">专有模块(特征 fff1 接收通知 / fff2 写入发送 / fff3 双向配置)专用设置。\n透传模式: 自动启用 fff1 通知 + fff2 写入,关闭 fff3。\n设置模式: 自动关闭 fff1/fff2,启用 fff3 写入 + 通知(请先开启硬件 SET 开关)。\nUUID 支持 4 位缩写。</string>
+    <string name="module_hint">专有模块(E104-BT5005A 等,服务 FFF0,特征 fff1 接收通知 / fff2 写入发送 / fff3 双向配置)。\n透传模式: 自动启用 fff1 通知 + fff2 写入,关闭 fff3。\n设置模式: 自动关闭 fff1/fff2,启用 fff3 写入 + 通知(空中配置通道)。\nUUID 支持 4 位缩写,空中配置前必须先发送认证指令。</string>
     <string name="module_status">当前状态: %1$s</string>
     <string name="module_status_none">未连接 BLE 设备</string>
     <string name="module_status_normal">已连接,未检测到专有模块特征(fff1/fff2/fff3),模式切换不可用</string>
@@ -102,6 +102,11 @@
     <string name="module_uuid_rx">接收通知特征(默认 fff1)</string>
     <string name="module_uuid_tx">写入发送特征(默认 fff2)</string>
     <string name="module_uuid_cfg">配置双向特征(默认 fff3)</string>
+    <string name="module_auth_label">空中配置认证密码(默认 123456)</string>
+    <string name="module_auth_send">发送认证指令</string>
+    <string name="module_auth_sent">已发送 %1$s,等待模块返回 +OK</string>
+    <string name="module_auth_empty">请输入认证密码</string>
+    <string name="module_at_hint">空中配置: 进入设置模式后先「发送认证指令」,模块返回 +OK 即认证成功。\n然后发送 AT 配置指令(如 at+baud=115200、at+role=0、at+name=xxx)。\n注意: AT 指令无需加回车换行,发送时行尾请选「无」。</string>
 
     <!-- Modbus RTU 页 -->
     <string name="modbus_hint">Modbus RTU 帧生成:填写参数后自动计算 CRC16,点「发送」按 HEX 发送(无行尾)。</string>

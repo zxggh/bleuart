@@ -58,6 +58,44 @@
                 android:text="@string/module_exit_config" />
         </LinearLayout>
 
+        <!-- 空中配置认证 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/etModuleAuth"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="monospace"
+                android:hint="@string/module_auth_label"
+                android:inputType="text"
+                android:maxLength="20"
+                android:text="123456"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btnSendAuth"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:minWidth="0dp"
+                android:text="@string/module_auth_send" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvModuleAtHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/module_at_hint"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="12sp" />
+
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

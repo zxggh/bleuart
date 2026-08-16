@@ -13,15 +13,19 @@ import com.example.bluetoothserial.bt.ConnType
 import com.example.bluetoothserial.bt.ModuleMode
 import com.example.bluetoothserial.data.BleSettingsPrefs
 import com.example.bluetoothserial.databinding.FragmentModuleSettingsBinding
+import com.example.bluetoothserial.model.TextCharset
+import com.example.bluetoothserial.util.HexUtils
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.util.UUID
 
 /**
- * 专有模块设置页。
+ * 专有模块设置页(E104-BT5005A 等)。
  *
- * 专有模块特征: fff1 接收通知 / fff2 写入发送 / fff3 双向配置。
+ * 专有模块特征(服务 FFF0): fff1 接收通知 / fff2 写入发送 / fff3 双向配置。
  * - 透传模式: 启用 fff1 通知 + fff2 写入,关闭 fff3(连接后默认);
- * - 设置模式: 关闭 fff1/fff2,启用 fff3 写入 + 通知(进入前请开启硬件 SET 开关)。
+ * - 设置模式: 关闭 fff1/fff2,启用 fff3 写入 + 通知(空中配置通道)。
+ *   空中配置前必须先发送认证指令(at+auth=123456),模块返回 +OK 即认证成功;
+ *   AT 指令无需加回车换行,发送时行尾选「无」。
  * 模式切换由 BleUartClient 通过重新 discoverServices + 动态绑定/解绑特征通道完成。
  */
 class ModuleSettingsFragment : Fragment() {
@@ -48,6 +52,7 @@ class ModuleSettingsFragment : Fragment() {
 
         binding.btnEnterConfig.setOnClickListener { confirmEnterConfig() }
         binding.btnExitConfig.setOnClickListener { ConnectionManager.enterPassthroughMode() }
+        binding.btnSendAuth.setOnClickListener { sendAuthCommand() }
         binding.btnSaveModuleUuid.setOnClickListener { saveUuidConfig() }
 
         refreshStatus()
@@ -100,6 +105,25 @@ class ModuleSettingsFragment : Fragment() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    /** 发送空中配置认证指令 at+auth=密码(无行尾) */
+    private fun sendAuthCommand() {
+        val pwd = binding.etModuleAuth.text?.toString()?.trim().orEmpty()
+        if (pwd.isEmpty()) {
+            Toast.makeText(requireContext(), R.string.module_auth_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val cmd = "at+auth=$pwd"
+        if (ConnectionManager.send(HexUtils.encode(cmd, TextCharset.UTF8))) {
+            Toast.makeText(
+                requireContext(),
+                getString(R.string.module_auth_sent, cmd),
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            Toast.makeText(requireContext(), R.string.not_connected_msg, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun saveUuidConfig() {

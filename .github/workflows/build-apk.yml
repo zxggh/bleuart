@@ -20,20 +20,14 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # 显式指定 SDK 组件,不依赖仓库里的任何隐藏文件
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          build-tools-version: 34.0.0
-
+      # Ubuntu 镜像已预装 Android SDK 34,无需额外安装 SDK 组件
       - name: Set up Gradle 8.7 (无需本地 wrapper)
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.7
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug
+        run: gradle :app:assembleDebug --stacktrace
 
       - name: Upload APK 产物
         uses: actions/upload-artifact@v4

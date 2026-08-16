@@ -105,7 +105,7 @@ app/src/main/java/com/example/bluetoothserial/
 
 > 注意：免费额度为 Public 仓库无限、Private 仓库每月 2000 分钟，个人使用完全足够。
 
-**工作流代码（`build-apk.yml` 内容，不含对隐藏文件的依赖）：**
+**工作流代码（`build-apk.yml` 内容，不依赖任何隐藏文件，SDK 用镜像预装版）：**
 
 ```yaml
 name: Build APK
@@ -129,19 +129,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          build-tools-version: 34.0.0
-
       - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.7
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug
+        run: gradle :app:assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

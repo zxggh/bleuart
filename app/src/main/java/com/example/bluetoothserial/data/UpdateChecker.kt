@@ -16,19 +16,17 @@ data class AppUpdate(
 object UpdateChecker {
 
     /**
-     * 默认更新源地址(国内可直接访问)。
-     * 目标用户在国内无代理,默认使用 Gitee(码云) raw 直链:
-     *   https://gitee.com/<用户名>/<仓库名>/raw/<分支>/version.json
-     * 请把下面地址换成你自己的 Gitee 用户名/仓库名,
-     * 或在 App 内「更新地址」设置中直接粘贴完整 URL(保存后立即生效,无需重编译)。
+     * 默认更新源地址。
+     * 当前默认 GitHub Releases API(便于开发调试,需要代理):
+     *   https://api.github.com/repos/<user>/<repo>/releases/latest
+     * 自动从 tag(v1.0.1)与 assets 中解析版本和 APK。
      *
-     * 支持的两种更新源格式:
-     * 1) 自定义 version.json(默认,推荐国内使用):
-     *    {"versionName":"1.1.0","apkUrl":"https://gitee.com/xxx/bleuart/raw/master/app-debug.apk","notes":"更新说明"}
-     * 2) GitHub Releases API(需要代理):https://api.github.com/repos/<user>/<repo>/releases/latest
-     *    自动从 tag(v1.0.1)与 assets 中解析版本和 APK。
+     * 若最终用户在国内无代理,可在 App 内「更新地址」中改为:
+     *   https://gitee.com/<用户名>/<仓库名>/raw/<分支>/version.json
+     * (version.json 格式: {"versionName":"1.1.0","apkUrl":"https://.../app-debug.apk","notes":"更新说明"})
+     * 无需重新编译。
      */
-    const val DEFAULT_UPDATE_URL = "https://gitee.com/zxggh/bleuart/raw/master/version.json"
+    const val DEFAULT_UPDATE_URL = "https://api.github.com/repos/zxggh/bleuart/releases/latest"
 
     /**
      * 检查更新。

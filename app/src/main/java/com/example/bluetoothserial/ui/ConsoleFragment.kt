@@ -359,11 +359,13 @@ class ConsoleFragment : Fragment() {
         menu.menu.add(0, 1, 0, if (paused) R.string.resume else R.string.pause)
         menu.menu.add(0, 2, 1, R.string.clear)
         menu.menu.add(0, 3, 2, R.string.copy)
+        menu.menu.add(0, 4, 3, R.string.update_menu)
         menu.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> paused = !paused
                 2 -> clearReceive()
                 3 -> copyReceive()
+                4 -> (activity as? MainActivity)?.checkForUpdates(true)
             }
             true
         }

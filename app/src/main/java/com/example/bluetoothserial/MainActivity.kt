@@ -1,23 +1,32 @@
 package com.example.bluetoothserial
 
 import android.Manifest
+import android.app.DownloadManager
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import com.example.bluetoothserial.data.AppUpdate
+import com.example.bluetoothserial.data.UpdateChecker
 import com.example.bluetoothserial.databinding.ActivityMainBinding
 import com.example.bluetoothserial.ui.CommandFragment
 import com.example.bluetoothserial.ui.ConsoleFragment
 import com.example.bluetoothserial.ui.DeviceFragment
 import com.example.bluetoothserial.ui.ModbusFragment
 import com.example.bluetoothserial.ui.ModuleSettingsFragment
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class MainActivity : AppCompatActivity() {
 
@@ -31,6 +40,25 @@ class MainActivity : AppCompatActivity() {
 
     private var pendingPermissionCallback: (() -> Unit)? = null
     private var pendingBluetoothOnCallback: (() -> Unit)? = null
+
+    // ---------------- 更新下载 ----------------
+    private var downloadId: Long = -1L
+    private var pendingApkUri: Uri? = null
+
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+            if (id != downloadId) return
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val uri = dm.getUriForDownloadedFile(id)
+            if (uri != null) {
+                installApk(uri)
+            } else {
+                Toast.makeText(this@MainActivity, R.string.update_fail, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
@@ -93,6 +121,22 @@ class MainActivity : AppCompatActivity() {
 
         // 首次启动主动请求蓝牙权限,避免扫描/连接时再弹
         binding.root.post { ensureBluetoothPermissions { } }
+
+        // 注册下载完成监听
+        ContextCompat.registerReceiver(
+            this,
+            downloadReceiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+
+        // 自动检查更新(每 24 小时静默检查一次,发现新版本才提示)
+        autoCheckUpdate()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try { unregisterReceiver(downloadReceiver) } catch (_: Exception) {}
     }
 
     private fun showFragment(target: Fragment?) {
@@ -115,6 +159,100 @@ class MainActivity : AppCompatActivity() {
     fun switchToDevices() {
         binding.bottomNav.selectedItemId = R.id.nav_devices
     }
+
+    // ---------------- 更新检查与安装 ----------------
+
+    /**
+     * 检查更新。
+     * @param manual true=用户手动触发(有过程提示); false=自动检查(仅发现新版本才提示)
+     */
+    fun checkForUpdates(manual: Boolean) {
+        if (manual) {
+            Toast.makeText(this, R.string.update_checking, Toast.LENGTH_SHORT).show()
+        }
+        val current = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0.0"
+        } catch (_: Exception) {
+            "1.0.0"
+        }
+        UpdateChecker.check(current) { ok, update ->
+            runOnUiThread {
+                if (!ok) {
+                    if (manual) Toast.makeText(this, R.string.update_fail, Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                val u = update
+                if (u == null) {
+                    if (manual) Toast.makeText(this, R.string.update_latest, Toast.LENGTH_SHORT).show()
+                } else {
+                    showUpdateDialog(u)
+                }
+            }
+        }
+    }
+
+    private fun autoCheckUpdate() {
+        val prefs = getSharedPreferences("update_prefs", Context.MODE_PRIVATE)
+        val last = prefs.getLong("last_check", 0L)
+        val now = System.currentTimeMillis()
+        if (now - last < 24 * 3600 * 1000L) return
+        prefs.edit().putLong("last_check", now).apply()
+        checkForUpdates(false)
+    }
+
+    private fun showUpdateDialog(update: AppUpdate) {
+        val notes = update.notes.ifEmpty { getString(R.string.update_no_notes) }
+        MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.update_found_title, update.versionName))
+            .setMessage(notes)
+            .setPositiveButton(R.string.update_download) { _, _ -> downloadAndInstall(update.apkUrl) }
+            .setNegativeButton(R.string.update_later, null)
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun downloadAndInstall(apkUrl: String) {
+        // Android 8.0+ 安装未知应用需授权
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            MaterialAlertDialogBuilder(this)
+                .setMessage(R.string.update_permission_msg)
+                .setPositiveButton(R.string.update_permission_goto) { _, _ ->
+                    startActivity(
+                        Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+                    )
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+            return
+        }
+        try {
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val req = DownloadManager.Request(Uri.parse(apkUrl))
+                .setTitle(getString(R.string.app_name) + " 更新")
+                .setDescription(getString(R.string.update_checking))
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setMimeType("application/vnd.android.package-archive")
+                .setDestinationInExternalFilesDir(this, null, "zxg-update.apk")
+            downloadId = dm.enqueue(req)
+            Toast.makeText(this, R.string.update_downloading, Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, R.string.update_fail, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun installApk(uri: Uri) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        } catch (_: Exception) {
+            Toast.makeText(this, R.string.update_fail, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // ---------------- 权限 ----------------
 
     /**
      * 按系统版本请求蓝牙运行时权限:

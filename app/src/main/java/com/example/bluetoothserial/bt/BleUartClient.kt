@@ -92,9 +92,10 @@ class BleUartClient(
 
             notify?.let { ch ->
                 gatt.setCharacteristicNotification(ch, true)
-                val cccd = ch.descriptors.firstOrNull { it.uuid == CCCD }
-                    ?: BluetoothGattDescriptor(CCCD, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-                gatt.writeDescriptor(cccd)
+                // 标准 UART 模块的通知特征都自带 CCCD,直接使用现成描述符即可
+                ch.descriptors.firstOrNull { it.uuid == CCCD }?.let { cccd ->
+                    gatt.writeDescriptor(cccd)
+                }
             }
             try { gatt.requestMtu(247) } catch (_: Exception) {}
             main.post { onConnected?.invoke() }

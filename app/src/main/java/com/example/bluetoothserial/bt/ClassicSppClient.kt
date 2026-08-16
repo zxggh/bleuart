@@ -55,8 +55,8 @@ class ClassicSppClient(private val device: BluetoothDevice) {
                 }
             }
             socket = s
-            input = s.inputStream
-            output = s.outputStream
+            input = s!!.inputStream
+            output = s!!.outputStream
             main.post { onConnected?.invoke() }
             readLoop()
         }, "classic-spp-${device.address}").apply { start() }

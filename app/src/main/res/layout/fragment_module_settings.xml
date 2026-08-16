@@ -36,7 +36,7 @@
             android:id="@+id/tvModuleUartInfo"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:fontFamily="monospace"
             android:textColor="?attr/colorPrimary"
             android:textSize="14sp"
@@ -68,40 +68,11 @@
                 android:text="@string/module_exit_config" />
         </LinearLayout>
 
-        <!-- 空中配置认证 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/etModuleAuth"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:fontFamily="monospace"
-                android:hint="@string/module_auth_label"
-                android:inputType="text"
-                android:maxLength="20"
-                android:text="123456"
-                android:textSize="14sp" />
-
-            <Button
-                android:id="@+id/btnSendAuth"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:minWidth="0dp"
-                android:text="@string/module_auth_send" />
-        </LinearLayout>
-
         <!-- 波特率设置 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="16dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -162,91 +133,5 @@
             android:text="@string/module_at_hint"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:textSize="12sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="@string/ble_setting"
-            android:textSize="14sp"
-            android:textStyle="bold" />
-
-        <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="@string/module_uuid_service">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etModuleService"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:inputType="text"
-                android:maxLines="1"
-                android:textSize="13sp" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="@string/module_uuid_rx">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etModuleRx"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:inputType="text"
-                android:maxLines="1"
-                android:text="fff1"
-                android:textSize="13sp" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="@string/module_uuid_tx">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etModuleTx"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:inputType="text"
-                android:maxLines="1"
-                android:text="fff2"
-                android:textSize="13sp" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="@string/module_uuid_cfg">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etModuleCfg"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:inputType="text"
-                android:maxLines="1"
-                android:text="fff3"
-                android:textSize="13sp" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <Button
-            android:id="@+id/btnSaveModuleUuid"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="@string/module_save" />
     </LinearLayout>
 </ScrollView>

@@ -107,7 +107,7 @@
     <string name="module_auth_sent">已发送 %1$s,等待模块回复…</string>
     <string name="module_auth_empty">请输入认证密码</string>
     <string name="module_at_hint">进入设置模式后 App 会自动: ①发送认证指令(at+auth=123456) ②读取当前串口参数(at+baud? / at+pari?)。\n也可以手动选择波特率或输入其它 AT 指令点「设置」发送(AT 指令无需回车换行,行尾选「无」)。</string>
-    <string name="module_uart_info_label">当前串口参数</string>
+    <string name="module_uart_info_label">当前串口信息</string>
     <string name="module_uart_info">%1$s</string>
     <string name="module_baud_label">波特率(重启生效)</string>
     <string name="module_baud_set">设置波特率</string>

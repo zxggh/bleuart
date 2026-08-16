@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.fragment.app.Fragment
@@ -15,7 +14,6 @@ import com.example.bluetoothserial.bt.ConnState
 import com.example.bluetoothserial.bt.ConnType
 import com.example.bluetoothserial.bt.ModuleMode
 import com.example.bluetoothserial.bt.RxData
-import com.example.bluetoothserial.data.BleSettingsPrefs
 import com.example.bluetoothserial.databinding.FragmentModuleSettingsBinding
 import com.example.bluetoothserial.model.TextCharset
 import com.example.bluetoothserial.util.HexUtils
@@ -23,7 +21,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.UUID
 
 /**
  * 专有模块调试器设置页(E104-BT5005A 等)。
@@ -31,9 +28,9 @@ import java.util.UUID
  * 专有模块特征(服务 FFF0): fff1 接收通知 / fff2 写入发送 / fff3 双向配置。
  * - 透传模式: 启用 fff1 通知 + fff2 写入,关闭 fff3(连接后默认);
  * - 设置模式: 关闭 fff1/fff2,启用 fff3 写入 + 通知(空中配置通道)。
- *   进入设置模式后 App 自动: ①发送认证指令 at+auth=密码 ②认证成功后自动查询
- *   at+baud? / at+pari? 并显示当前串口参数(如 115200,8,1,无校验)。
- *   所有设置指令根据模块回复(+OK / +ERR=[NUM] / 超时)给出对应提示。
+ * 进入设置模式后 App 自动发送认证指令 at+auth=123456,认证成功后自动查询
+ * at+baud? / at+pari? 并显示当前串口信息(如 115200,8,1,无校验)。
+ * 所有设置指令根据模块回复(+OK / +ERR=[NUM] / 超时)给出对应提示。
  */
 class ModuleSettingsFragment : Fragment() {
 
@@ -69,12 +66,6 @@ class ModuleSettingsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val s = BleSettingsPrefs.load(requireContext())
-        binding.etModuleService.setText(s.serviceUuid)
-        binding.etModuleRx.setText(if (s.notifyUuid.isBlank()) "fff1" else s.notifyUuid)
-        binding.etModuleTx.setText(if (s.writeUuid.isBlank()) "fff2" else s.writeUuid)
-        binding.etModuleCfg.setText(if (s.cfgUuid.isBlank()) "fff3" else s.cfgUuid)
-
         binding.spBaud.adapter = ArrayAdapter(
             requireContext(), android.R.layout.simple_spinner_item, baudList.map { it.bps }
         ).apply {
@@ -84,14 +75,6 @@ class ModuleSettingsFragment : Fragment() {
 
         binding.btnEnterConfig.setOnClickListener { confirmEnterConfig() }
         binding.btnExitConfig.setOnClickListener { ConnectionManager.enterPassthroughMode() }
-        binding.btnSendAuth.setOnClickListener {
-            val pwd = binding.etModuleAuth.text?.toString()?.trim().orEmpty()
-            if (pwd.isEmpty()) {
-                Toast.makeText(requireContext(), R.string.module_auth_empty, Toast.LENGTH_SHORT).show()
-            } else {
-                sendAt("at+auth=$pwd", Pending.AUTH)
-            }
-        }
         binding.btnSetBaud.setOnClickListener {
             val idx = binding.spBaud.selectedItemPosition.coerceIn(0, baudList.size - 1)
             sendAt("at+baud=${baudList[idx].index}", Pending.BAUD_SET)
@@ -104,7 +87,6 @@ class ModuleSettingsFragment : Fragment() {
                 sendAt(cmd, Pending.CMD)
             }
         }
-        binding.btnSaveModuleUuid.setOnClickListener { saveUuidConfig() }
 
         refreshStatus()
     }
@@ -135,19 +117,18 @@ class ModuleSettingsFragment : Fragment() {
 
     private fun onModeChanged(mode: ModuleMode) {
         refreshStatus()
-        // 进入设置模式后,App 自动发送空中配置认证指令
+        // 进入设置模式后,App 自动发送空中配置认证指令(默认密码 123456)
         if (mode == ModuleMode.CONFIG && pending == Pending.NONE) {
             autoAuth()
         }
     }
 
     private fun autoAuth() {
-        val pwd = binding.etModuleAuth.text?.toString()?.trim().orEmpty().ifEmpty { "123456" }
-        // 等待 discoverServices 重新绑定 fff3 通道完成后再发送
+        // 等待特征通道重新绑定完成后再发送
         viewLifecycleOwner.lifecycleScope.launch {
             delay(800)
             if (pending == Pending.NONE && ConnectionManager.state.type == ConnType.BLE) {
-                sendAt("at+auth=$pwd", Pending.AUTH)
+                sendAt("at+auth=123456", Pending.AUTH)
             }
         }
     }
@@ -211,16 +192,12 @@ class ModuleSettingsFragment : Fragment() {
                 onErr(num)
             }
             else -> {
-                val t = pending
                 pending = Pending.NONE
                 Toast.makeText(
                     requireContext(),
                     getString(R.string.module_reply_unknown, line),
                     Toast.LENGTH_SHORT
                 ).show()
-                if (t == Pending.AUTH) {
-                    Toast.makeText(requireContext(), "认证未成功,请检查密码后重试", Toast.LENGTH_LONG).show()
-                }
             }
         }
     }
@@ -284,8 +261,9 @@ class ModuleSettingsFragment : Fragment() {
     private fun showUartInfo(parity: String) {
         val sel = binding.spBaud.selectedItemPosition.coerceIn(0, baudList.size - 1)
         val info = "${baudList[sel].bps},8,1,$parity"
-        binding.tvModuleUartInfo.text = getString(R.string.module_uart_info, info)
-        Toast.makeText(requireContext(), getString(R.string.module_uart_info, info), Toast.LENGTH_LONG).show()
+        val text = getString(R.string.module_uart_info_label) + "：" + info
+        binding.tvModuleUartInfo.text = text
+        Toast.makeText(requireContext(), text, Toast.LENGTH_LONG).show()
     }
 
     /** 错误代码 -> 含义(数据手册 6.2 错误代码表) */
@@ -311,36 +289,11 @@ class ModuleSettingsFragment : Fragment() {
         binding.tvModuleStatus.text = getString(R.string.module_status, status)
 
         val mode = ConnectionManager.currentModuleMode()
+        val inConfig = mode == ModuleMode.CONFIG
         binding.tvModuleMode.text = getString(
             R.string.module_mode_label,
-            if (mode == ModuleMode.CONFIG) getString(R.string.mode_config) else getString(R.string.mode_passthrough)
+            if (inConfig) getString(R.string.mode_config) else getString(R.string.mode_passthrough)
         )
-    }
-
-    // ================= UUID 保存 =================
-
-    private fun saveUuidConfig() {
-        val service = binding.etModuleService.text?.toString()?.trim().orEmpty()
-        val rx = binding.etModuleRx.text?.toString()?.trim().orEmpty()
-        val tx = binding.etModuleTx.text?.toString()?.trim().orEmpty()
-        val cfg = binding.etModuleCfg.text?.toString()?.trim().orEmpty()
-
-        fun valid(u: String): Boolean {
-            val t = u.trim()
-            if (t.isEmpty()) return true
-            if (t.length == 4 && t.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) return true
-            return runCatching { UUID.fromString(t) }.isSuccess
-        }
-        if (!valid(service) || !valid(rx) || !valid(tx) || !valid(cfg)) {
-            Toast.makeText(requireContext(), R.string.uuid_invalid, Toast.LENGTH_LONG).show()
-            return
-        }
-        val cur = BleSettingsPrefs.load(requireContext())
-        BleSettingsPrefs.save(
-            requireContext(),
-            cur.copy(serviceUuid = service, notifyUuid = rx, writeUuid = tx, cfgUuid = cfg)
-        )
-        Toast.makeText(requireContext(), R.string.module_saved, Toast.LENGTH_SHORT).show()
     }
 
     companion object {

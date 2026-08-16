@@ -22,10 +22,14 @@ enum class ModuleMode { PASSTHROUGH, CONFIG }
  * 通用模式:自动识别常见 UART 服务(NUS / HM-10 FFE0 / JDY-08 FFE5),
  * 也支持通过 BleSettings 手动指定服务 / 写特征 / 通知特征 UUID。
  *
- * 专有模块模式(特征 fff1 接收通知 / fff2 写入发送 / fff3 双向配置):
+ * 专有模块模式(服务 FFF0,特征 fff1 接收通知 / fff2 写入发送 / fff3 双向配置):
  * - 透传模式:启用 fff1 通知 + fff2 写入,关闭 fff3;
  * - 设置模式:关闭 fff1/fff2,启用 fff3 写入 + 通知。
- * 模式切换时重新 discoverServices 并按模式动态绑定/解绑特征通道。
+ *
+ * 模式切换直接基于已发现的服务缓存立即重新绑定特征通道
+ * (不依赖 discoverServices 的第二次回调,避免部分设备不触发回调导致通道未绑定),
+ * discoverServices 仅作尽力重试;CCCD 描述符写入串行化排队,
+ * 避免 fff1 关闭与 fff3 开启的并发写入导致模块无响应。
  */
 class BleUartClient(
     private val context: Context,
@@ -54,6 +58,10 @@ class BleUartClient(
     private var writeChar: BluetoothGattCharacteristic? = null
     private var notifyChar: BluetoothGattCharacteristic? = null
     private var cfgChar: BluetoothGattCharacteristic? = null
+
+    /** CCCD 描述符写入队列(串行化,避免并发写入导致模块不响应) */
+    private val descriptorQueue = ArrayDeque<Pair<BluetoothGattCharacteristic, ByteArray>>()
+    private var descriptorWritePending = false
 
     /** 是否为专有模块(检测到 fff1/fff2/fff3 特征) */
     var isProprietary: Boolean = false
@@ -101,9 +109,17 @@ class BleUartClient(
             val value = characteristic.value ?: ByteArray(0)
             main.post { onData?.invoke(value) }
         }
+
+        override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            descriptorWritePending = false
+            if (descriptorQueue.isNotEmpty()) descriptorQueue.removeFirst()
+            processDescriptorQueue()
+        }
     }
 
-    /** 检测专有模块特征并按其 UUID 绑定;否则走通用 UART 逻辑 */
+    // ================= 特征查找与绑定 =================
+
+    /** 检测专有模块特征并绑定;否则走通用 UART 逻辑 */
     private fun detectAndBind(gatt: BluetoothGatt) {
         val rxUuid = settings.parseNotify() ?: DEF_RX_UUID
         val txUuid = settings.parseWrite() ?: DEF_TX_UUID
@@ -118,25 +134,51 @@ class BleUartClient(
 
         if (isProprietary) {
             cfgChar = cfg
-            when (mode) {
-                ModuleMode.PASSTHROUGH -> {
-                    // 透传:fff1 通知 + fff2 写入,关闭 fff3
-                    notifyChar = rx
-                    writeChar = tx
-                    enableNotify(rx)
-                    disableNotify(cfg)
-                }
-                ModuleMode.CONFIG -> {
-                    // 设置:关闭 fff1,fff3 双向
-                    disableNotify(rx)
-                    notifyChar = cfg
-                    writeChar = cfg
-                    enableNotify(cfg)
-                }
-            }
+            applyModeBindings()
         } else {
             cfgChar = null
             bindGeneric(gatt)
+        }
+    }
+
+    /**
+     * 按当前模式重新绑定特征通道(直接从已发现的服务缓存查找,不依赖 discoverServices 回调)。
+     */
+    @SuppressLint("MissingPermission")
+    private fun applyModeBindings() {
+        val g = gatt ?: return
+        // 1) 解绑:关闭所有已启用通知,清空写入特征
+        disableNotify(notifyChar)
+        disableNotify(cfgChar)
+        writeChar = null
+        notifyChar = null
+
+        // 2) 从已发现服务中重新查找特征
+        val rxUuid = settings.parseNotify() ?: DEF_RX_UUID
+        val txUuid = settings.parseWrite() ?: DEF_TX_UUID
+        val cfgUuid = settings.parseCfg() ?: DEF_CFG_UUID
+        val allChars = g.services.flatMap { it.characteristics }
+        val rx = allChars.firstOrNull { it.uuid == rxUuid }
+        val tx = allChars.firstOrNull { it.uuid == txUuid }
+        val cfg = allChars.firstOrNull { it.uuid == cfgUuid }
+        if (rx == null || tx == null || cfg == null) return
+
+        cfgChar = cfg
+        when (mode) {
+            ModuleMode.PASSTHROUGH -> {
+                // 透传:fff1 通知 + fff2 写入,关闭 fff3
+                notifyChar = rx
+                writeChar = tx
+                enableNotify(rx)
+                disableNotify(cfg)
+            }
+            ModuleMode.CONFIG -> {
+                // 设置:关闭 fff1,fff3 双向
+                disableNotify(rx)
+                notifyChar = cfg
+                writeChar = cfg
+                enableNotify(cfg)
+            }
         }
     }
 
@@ -182,23 +224,20 @@ class BleUartClient(
 
     /**
      * 切换专有模块工作模式。
-     * 先解绑当前通道(关闭全部通知、清空写入特征),
-     * 再重新 discoverServices 并按新模式重新绑定。
+     * 直接基于已发现的服务缓存重新绑定通道(立即生效),
+     * 再尽力 discoverServices 一次(部分固件需要,若回调不触发也不影响)。
      */
     @SuppressLint("MissingPermission")
     fun setMode(newMode: ModuleMode) {
         if (!isProprietary) return
         if (mode == newMode) return
         mode = newMode
-        // 1) 解绑:关闭所有通知,清空写入特征
-        disableNotify(notifyChar)
-        disableNotify(cfgChar)
-        writeChar = null
-        notifyChar = null
-        // 2) 重新发现服务,onServicesDiscovered 中按 mode 重新绑定
+        applyModeBindings()
         try { gatt?.discoverServices() } catch (_: Exception) {}
         main.post { onModeChanged?.invoke(newMode) }
     }
+
+    // ================= 通知启停(CCCD 串行写入) =================
 
     /** 启用特征通知(写 CCCD 0x0001) */
     @SuppressLint("MissingPermission")
@@ -222,15 +261,32 @@ class BleUartClient(
         } catch (_: Exception) {}
     }
 
-    /** 写 CCCD 描述符(标准 UART 特征都自带 CCCD) */
+    /** 写 CCCD 描述符(入队,串行执行) */
     @SuppressLint("MissingPermission")
     private fun writeCccd(char: BluetoothGattCharacteristic, value: ByteArray) {
+        descriptorQueue.addLast(char to value)
+        processDescriptorQueue()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun processDescriptorQueue() {
+        if (descriptorWritePending) return
         val g = gatt ?: return
-        val d = char.descriptors.firstOrNull { it.uuid == CCCD } ?: return
+        val next = descriptorQueue.firstOrNull() ?: return
+        val d = next.first.descriptors.firstOrNull { it.uuid == CCCD } ?: run {
+            descriptorQueue.removeFirst()
+            processDescriptorQueue()
+            return
+        }
+        descriptorWritePending = true
         try {
-            d.value = value
+            d.value = next.second
             g.writeDescriptor(d)
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            descriptorWritePending = false
+            if (descriptorQueue.isNotEmpty()) descriptorQueue.removeFirst()
+            processDescriptorQueue()
+        }
     }
 
     @SuppressLint("MissingPermission")

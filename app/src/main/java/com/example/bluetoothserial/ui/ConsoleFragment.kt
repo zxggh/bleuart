@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
@@ -64,6 +66,10 @@ class ConsoleFragment : Fragment() {
     // 接收行缓冲(合并分包)
     private val rxLineBuffer = ByteArrayOutputStream()
     private var rxLineStartTs = 0L
+
+    /** 数据停顿后把未换行的部分提交为一行,保证无换行数据也能实时显示 */
+    private val flushHandler = Handler(Looper.getMainLooper())
+    private val flushRunnable = Runnable { flushPendingRxLine() }
 
     private var rxBytesTotal = 0L
     private var txBytesTotal = 0L
@@ -164,6 +170,7 @@ class ConsoleFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         stopLoop()
+        flushHandler.removeCallbacks(flushRunnable)
         _binding = null
     }
 
@@ -202,34 +209,59 @@ class ConsoleFragment : Fragment() {
         }
     }
 
-    // ================= 接收(行缓冲合并分包) =================
+    // ================= 接收(行缓冲合并分包 + 空闲刷行) =================
 
     private fun appendReceived(rx: RxData) {
         rxBytesTotal += rx.bytes.size
         if (rxLineStartTs == 0L) rxLineStartTs = rx.timestamp
         rxLineBuffer.write(rx.bytes)
+        processRxBuffer()
+        // 数据停顿后提交未换行的部分,保证无换行数据(二进制/Modbus)也能实时显示
+        flushHandler.removeCallbacks(flushRunnable)
+        flushHandler.postDelayed(flushRunnable, RX_LINE_IDLE_MS)
+        updateStats()
+        autoScroll()
+    }
 
+    /** 处理缓冲中的完整行(按 \n 切分);剩余未换行部分保留在缓冲 */
+    private fun processRxBuffer() {
+        if (rxLineBuffer.size() == 0) return
         val buf = rxLineBuffer.toByteArray()
         var lastNl = -1
         for (i in buf.indices) {
             if (buf[i] == 0x0A.toByte()) lastNl = i
         }
-        if (lastNl >= 0 || buf.size >= MAX_LINE_BYTES) {
-            val lineEnd = if (lastNl >= 0) lastNl else buf.size
+        if (lastNl >= 0) {
             // 去掉行尾 \r\n 仅用于显示
-            var displayEnd = lineEnd
+            var displayEnd = lastNl
             while (displayEnd > 0 && (buf[displayEnd - 1] == 0x0A.toByte() || buf[displayEnd - 1] == 0x0D.toByte())) {
                 displayEnd--
             }
             commitRxLine(buf.copyOfRange(0, displayEnd), rxLineStartTs)
 
-            val rest = buf.copyOfRange(if (lastNl >= 0) lastNl + 1 else buf.size, buf.size)
+            val rest = buf.copyOfRange(lastNl + 1, buf.size)
             rxLineBuffer.reset()
             if (rest.isNotEmpty()) rxLineBuffer.write(rest)
             rxLineStartTs = if (rest.isNotEmpty()) rx.timestamp else 0L
+            // 剩余部分可能还包含多行,继续处理
+            if (rest.isNotEmpty()) processRxBuffer()
+        } else if (buf.size >= MAX_LINE_BYTES) {
+            // 超长无换行数据:直接提交为一行
+            flushPendingRxLine()
         }
-        updateStats()
-        autoScroll()
+    }
+
+    /** 把缓冲中未换行的数据提交为一行 */
+    private fun flushPendingRxLine() {
+        if (rxLineBuffer.size() == 0) return
+        val buf = rxLineBuffer.toByteArray()
+        var displayEnd = buf.size
+        while (displayEnd > 0 && (buf[displayEnd - 1] == 0x0A.toByte() || buf[displayEnd - 1] == 0x0D.toByte())) {
+            displayEnd--
+        }
+        commitRxLine(buf.copyOfRange(0, displayEnd), rxLineStartTs)
+        rxLineBuffer.reset()
+        rxLineStartTs = 0L
     }
 
     private fun commitRxLine(bytes: ByteArray, ts: Long) {
@@ -302,6 +334,7 @@ class ConsoleFragment : Fragment() {
     private fun clearReceive() {
         displayQueue.clear()
         logBuilder.delete(0, logBuilder.length)
+        flushHandler.removeCallbacks(flushRunnable)
         rxLineBuffer.reset()
         rxLineStartTs = 0L
         rxBytesTotal = 0
@@ -479,6 +512,7 @@ class ConsoleFragment : Fragment() {
     companion object {
         private const val MAX_LOG_CHARS = 400_000
         private const val MAX_LINE_BYTES = 4096
+        private const val RX_LINE_IDLE_MS = 150L
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
         private const val KEY_MODE_RX = "mode_rx"

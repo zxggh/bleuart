@@ -68,7 +68,17 @@ class ConsoleFragment : Fragment() {
     private val rxLineBuffer = ByteArrayOutputStream()
     private var rxLineStartTs = 0L
     private val flushHandler = Handler(Looper.getMainLooper())
-    private val flushRunnable = Runnable { flushPendingRxLine() }
+
+    /** 周期检查器:不被到达数据反复重置,保证快速发送时接收也能及时显示 */
+    private val flushRunnable = Runnable {
+        if (rxLineBuffer.size() > 0) {
+            val age = System.currentTimeMillis() - rxLineStartTs
+            if (age >= RX_LINE_IDLE_MS || rxLineBuffer.size() >= MAX_LINE_BYTES) {
+                flushPendingRxLine()
+            }
+        }
+        if (_binding != null) flushHandler.postDelayed(this, RX_LINE_IDLE_MS)
+    }
 
     private var rxBytesTotal = 0L
     private var txBytesTotal = 0L
@@ -128,6 +138,9 @@ class ConsoleFragment : Fragment() {
             if (checked) restartLoop() else stopLoop()
         }
         binding.etInterval.doAfterTextChanged { if (binding.cbLoop.isChecked) restartLoop() }
+
+        // 启动接收行周期检查器
+        flushHandler.postDelayed(flushRunnable, RX_LINE_IDLE_MS)
 
         updateConnectionUi(ConnectionManager.state)
     }
@@ -227,9 +240,7 @@ class ConsoleFragment : Fragment() {
         if (rxLineStartTs == 0L) rxLineStartTs = rx.timestamp
         rxLineBuffer.write(rx.bytes)
         processRxBuffer(rx.timestamp)
-        // 包间间隔超过 50ms 即提交为一行(合并同一条响应的分片,区分不同响应)
-        flushHandler.removeCallbacks(flushRunnable)
-        flushHandler.postDelayed(flushRunnable, RX_LINE_IDLE_MS)
+        // 提交时机由周期检查器统一处理(每 50ms 检查行龄)
         updateStats()
         autoScroll()
     }
@@ -347,7 +358,6 @@ class ConsoleFragment : Fragment() {
     private fun clearReceive() {
         displayQueue.clear()
         logBuilder.delete(0, logBuilder.length)
-        flushHandler.removeCallbacks(flushRunnable)
         rxLineBuffer.reset()
         rxLineStartTs = 0L
         rxBytesTotal = 0

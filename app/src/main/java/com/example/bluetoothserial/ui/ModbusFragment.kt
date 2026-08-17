@@ -331,7 +331,7 @@ class ModbusFragment : Fragment() {
 
         private const val MAX_RX_CHARS = 300_000
         private const val MAX_LINE_BYTES = 4096
-        private const val RX_LINE_IDLE_MS = 100L
+        private const val RX_LINE_IDLE_MS = 50L
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
     }

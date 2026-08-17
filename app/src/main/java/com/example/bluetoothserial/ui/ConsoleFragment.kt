@@ -70,14 +70,16 @@ class ConsoleFragment : Fragment() {
     private val flushHandler = Handler(Looper.getMainLooper())
 
     /** 周期检查器:不被到达数据反复重置,保证快速发送时接收也能及时显示 */
-    private val flushRunnable = Runnable {
-        if (rxLineBuffer.size() > 0) {
-            val age = System.currentTimeMillis() - rxLineStartTs
-            if (age >= RX_LINE_IDLE_MS || rxLineBuffer.size() >= MAX_LINE_BYTES) {
-                flushPendingRxLine()
+    private val flushRunnable = object : Runnable {
+        override fun run() {
+            if (rxLineBuffer.size() > 0) {
+                val age = System.currentTimeMillis() - rxLineStartTs
+                if (age >= RX_LINE_IDLE_MS || rxLineBuffer.size() >= MAX_LINE_BYTES) {
+                    flushPendingRxLine()
+                }
             }
+            if (_binding != null) flushHandler.postDelayed(this, RX_LINE_IDLE_MS)
         }
-        if (_binding != null) flushHandler.postDelayed(this, RX_LINE_IDLE_MS)
     }
 
     private var rxBytesTotal = 0L

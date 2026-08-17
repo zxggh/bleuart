@@ -148,7 +148,7 @@
     <string name="modbus_slave">从站地址</string>
     <string name="modbus_func">功能码</string>
     <string name="modbus_start">起始地址</string>
-    <string name="modbus_value">数量 / 值</string>
+    <string name="modbus_value">读取数量</string>
     <string name="modbus_value_hint_read">数量(1-2000)</string>
     <string name="modbus_value_hint_write">值(0-65535)</string>
     <string name="modbus_value_hint_multi">值列表(逗号分隔)</string>

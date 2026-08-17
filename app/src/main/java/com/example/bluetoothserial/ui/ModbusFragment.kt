@@ -113,15 +113,65 @@ class ModbusFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         setListening(false)
+        flushHandler.removeCallbacks(flushRunnable)
         _binding = null
     }
 
-    // ================= 本页收发显示(分颜色/方向) =================
+    // ================= 本页收发显示(分颜色/方向,按 50ms 间隔合并一条响应的分片) =================
+
+    private val rxLineBuffer = ByteArrayOutputStream()
+    private var rxLineStartTs = 0L
+    private val flushHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val flushRunnable = Runnable { flushPendingRxLine() }
 
     private fun appendRx(rx: RxData) {
+        if (rxLineStartTs == 0L) rxLineStartTs = rx.timestamp
+        rxLineBuffer.write(rx.bytes)
+        processRxBuffer(rx.timestamp)
+        flushHandler.removeCallbacks(flushRunnable)
+        flushHandler.postDelayed(flushRunnable, RX_LINE_IDLE_MS)
+    }
+
+    private fun processRxBuffer(ts: Long) {
+        if (rxLineBuffer.size() == 0) return
+        val buf = rxLineBuffer.toByteArray()
+        var lastNl = -1
+        for (i in buf.indices) {
+            if (buf[i] == 0x0A.toByte()) lastNl = i
+        }
+        if (lastNl >= 0) {
+            var displayEnd = lastNl
+            while (displayEnd > 0 && (buf[displayEnd - 1] == 0x0A.toByte() || buf[displayEnd - 1] == 0x0D.toByte())) {
+                displayEnd--
+            }
+            commitRxLine(buf.copyOfRange(0, displayEnd), rxLineStartTs)
+            val rest = buf.copyOfRange(lastNl + 1, buf.size)
+            rxLineBuffer.reset()
+            if (rest.isNotEmpty()) rxLineBuffer.write(rest)
+            rxLineStartTs = if (rest.isNotEmpty()) ts else 0L
+            if (rest.isNotEmpty()) processRxBuffer(ts)
+        } else if (buf.size >= MAX_LINE_BYTES) {
+            flushPendingRxLine()
+        }
+    }
+
+    private fun flushPendingRxLine() {
+        if (rxLineBuffer.size() == 0) return
+        val buf = rxLineBuffer.toByteArray()
+        var displayEnd = buf.size
+        while (displayEnd > 0 && (buf[displayEnd - 1] == 0x0A.toByte() || buf[displayEnd - 1] == 0x0D.toByte())) {
+            displayEnd--
+        }
+        commitRxLine(buf.copyOfRange(0, displayEnd), rxLineStartTs)
+        rxLineBuffer.reset()
+        rxLineStartTs = 0L
+    }
+
+    private fun commitRxLine(bytes: ByteArray, ts: Long) {
+        if (bytes.isEmpty() && ts == 0L) return
         val sb = SpannableStringBuilder()
-        sb.append("[").append(TimeFormat.stamp(rx.timestamp)).append("] RX< ")
-            .append(HexUtils.toHex(rx.bytes)).append("\n")
+        sb.append("[").append(TimeFormat.stamp(ts)).append("] RX< ")
+            .append(HexUtils.toHex(bytes)).append("\n")
         if (sb.length > 1) {
             sb.setSpan(ForegroundColorSpan(RX_COLOR), 0, sb.length - 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
@@ -129,6 +179,8 @@ class ModbusFragment : Fragment() {
     }
 
     private fun appendTx(bytes: ByteArray) {
+        // 发送前先刷新待显示的接收,让 TX/RX 交替
+        flushPendingRxLine()
         val sb = SpannableStringBuilder()
         sb.append("[").append(TimeFormat.stamp(System.currentTimeMillis())).append("] TX> ")
             .append(HexUtils.toHex(bytes)).append("\n")
@@ -148,6 +200,9 @@ class ModbusFragment : Fragment() {
     }
 
     private fun clearRx() {
+        flushHandler.removeCallbacks(flushRunnable)
+        rxLineBuffer.reset()
+        rxLineStartTs = 0L
         modbusLog.delete(0, modbusLog.length)
         binding.tvModbusRx.text = ""
     }
@@ -253,6 +308,8 @@ class ModbusFragment : Fragment() {
 
     companion object {
         private const val MAX_RX_CHARS = 300_000
+        private const val MAX_LINE_BYTES = 4096
+        private const val RX_LINE_IDLE_MS = 50L
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
     }

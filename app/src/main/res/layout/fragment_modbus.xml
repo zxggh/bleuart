@@ -33,7 +33,7 @@
 
             <EditText
                 android:id="@+id/etSlave"
-                android:layout_width="120dp"
+                android:layout_width="160dp"
                 android:layout_height="wrap_content"
                 android:fontFamily="monospace"
                 android:inputType="number"
@@ -78,7 +78,7 @@
 
             <EditText
                 android:id="@+id/etStart"
-                android:layout_width="120dp"
+                android:layout_width="160dp"
                 android:layout_height="wrap_content"
                 android:fontFamily="monospace"
                 android:inputType="number"

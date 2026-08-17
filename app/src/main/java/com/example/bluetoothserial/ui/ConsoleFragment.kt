@@ -4,8 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
@@ -40,7 +38,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.ByteArrayOutputStream
 import java.util.UUID
 
 /** 接收区显示条目:区分发送(TX)与接收(RX) */
@@ -62,14 +59,6 @@ class ConsoleFragment : Fragment() {
 
     private val displayQueue = ArrayDeque<DisplayItem>()
     private val logBuilder = SpannableStringBuilder()
-
-    // 接收行缓冲(合并分包)
-    private val rxLineBuffer = ByteArrayOutputStream()
-    private var rxLineStartTs = 0L
-
-    /** 数据停顿后把未换行的部分提交为一行,保证无换行数据也能实时显示 */
-    private val flushHandler = Handler(Looper.getMainLooper())
-    private val flushRunnable = Runnable { flushPendingRxLine() }
 
     private var rxBytesTotal = 0L
     private var txBytesTotal = 0L
@@ -173,7 +162,6 @@ class ConsoleFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         stopLoop()
-        flushHandler.removeCallbacks(flushRunnable)
         _binding = null
     }
 
@@ -219,59 +207,12 @@ class ConsoleFragment : Fragment() {
         }
     }
 
-    // ================= 接收(行缓冲合并分包 + 空闲刷行) =================
+    // ================= 接收(每条通知独立成行,避免突发数据堆叠) =================
 
     private fun appendReceived(rx: RxData) {
         rxBytesTotal += rx.bytes.size
-        if (rxLineStartTs == 0L) rxLineStartTs = rx.timestamp
-        rxLineBuffer.write(rx.bytes)
-        processRxBuffer(rx.timestamp)
-        // 数据停顿后提交未换行的部分,保证无换行数据(二进制/Modbus)也能实时显示
-        flushHandler.removeCallbacks(flushRunnable)
-        flushHandler.postDelayed(flushRunnable, RX_LINE_IDLE_MS)
+        commitRxLine(rx.bytes, rx.timestamp)
         updateStats()
-        autoScroll()
-    }
-
-    /** 处理缓冲中的完整行(按 \n 切分);剩余未换行部分保留在缓冲 */
-    private fun processRxBuffer(ts: Long) {
-        if (rxLineBuffer.size() == 0) return
-        val buf = rxLineBuffer.toByteArray()
-        var lastNl = -1
-        for (i in buf.indices) {
-            if (buf[i] == 0x0A.toByte()) lastNl = i
-        }
-        if (lastNl >= 0) {
-            // 去掉行尾 \r\n 仅用于显示
-            var displayEnd = lastNl
-            while (displayEnd > 0 && (buf[displayEnd - 1] == 0x0A.toByte() || buf[displayEnd - 1] == 0x0D.toByte())) {
-                displayEnd--
-            }
-            commitRxLine(buf.copyOfRange(0, displayEnd), rxLineStartTs)
-
-            val rest = buf.copyOfRange(lastNl + 1, buf.size)
-            rxLineBuffer.reset()
-            if (rest.isNotEmpty()) rxLineBuffer.write(rest)
-            rxLineStartTs = if (rest.isNotEmpty()) ts else 0L
-            // 剩余部分可能还包含多行,继续处理
-            if (rest.isNotEmpty()) processRxBuffer(ts)
-        } else if (buf.size >= MAX_LINE_BYTES) {
-            // 超长无换行数据:直接提交为一行
-            flushPendingRxLine()
-        }
-    }
-
-    /** 把缓冲中未换行的数据提交为一行 */
-    private fun flushPendingRxLine() {
-        if (rxLineBuffer.size() == 0) return
-        val buf = rxLineBuffer.toByteArray()
-        var displayEnd = buf.size
-        while (displayEnd > 0 && (buf[displayEnd - 1] == 0x0A.toByte() || buf[displayEnd - 1] == 0x0D.toByte())) {
-            displayEnd--
-        }
-        commitRxLine(buf.copyOfRange(0, displayEnd), rxLineStartTs)
-        rxLineBuffer.reset()
-        rxLineStartTs = 0L
         autoScroll()
     }
 
@@ -349,9 +290,6 @@ class ConsoleFragment : Fragment() {
     private fun clearReceive() {
         displayQueue.clear()
         logBuilder.delete(0, logBuilder.length)
-        flushHandler.removeCallbacks(flushRunnable)
-        rxLineBuffer.reset()
-        rxLineStartTs = 0L
         rxBytesTotal = 0
         txBytesTotal = 0
         binding.tvReceive.text = getString(R.string.receive_placeholder)
@@ -420,8 +358,6 @@ class ConsoleFragment : Fragment() {
         val input = binding.etSend.text?.toString().orEmpty()
         if (input.isBlank()) return false
         val data = buildSendBytes(input) ?: return false
-        // 发送前先把上一轮的接收提交为一行,让 TX/RX 交替显示
-        flushPendingRxLine()
         if (ConnectionManager.send(data)) {
             // 定时发送也要回显 TX
             appendTxSent(data)
@@ -430,9 +366,8 @@ class ConsoleFragment : Fragment() {
         return false
     }
 
-    /** 发送回显:先把未换行的接收提交为一行(发送动作充当分隔符),再显示 TX */
+    /** 发送回显(TX 蓝色,独立一行) */
     private fun appendTxSent(bytes: ByteArray) {
-        flushPendingRxLine()
         val tx = DisplayItem.Tx(bytes, System.currentTimeMillis(), txIsHex, txCharset.javaName)
         displayQueue.addLast(tx)
         while (displayQueue.size > 5000) displayQueue.removeFirst()
@@ -535,8 +470,6 @@ class ConsoleFragment : Fragment() {
 
     companion object {
         private const val MAX_LOG_CHARS = 400_000
-        private const val MAX_LINE_BYTES = 4096
-        private const val RX_LINE_IDLE_MS = 50L
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
         private const val KEY_MODE_RX = "mode_rx"

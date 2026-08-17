@@ -232,12 +232,12 @@ class DeviceFragment : Fragment() {
         val idx = deviceList.indexOfFirst { it.address == d.address && it.isBle == d.isBle }
         if (idx >= 0) {
             deviceList[idx] = d
+            scheduleRefresh()
         } else {
             deviceList.add(d)
+            deviceList.sortWith(devicePriorityComparator)
+            adapter.notifyDataSetChanged()
         }
-        // 专有模块(E104-BT5005A)排到最前,方便连接
-        deviceList.sortWith(devicePriorityComparator)
-        adapter.notifyDataSetChanged()
     }
 
     private fun scheduleRefresh() {

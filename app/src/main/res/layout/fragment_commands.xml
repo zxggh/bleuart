@@ -47,7 +47,28 @@
                 android:paddingStart="10dp"
                 android:paddingEnd="10dp"
                 android:text="@string/cmd_export" />
+
+            <Button
+                android:id="@+id/btnHelp"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:text="@string/cmd_help_title" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvHelpPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="?attr/colorSurfaceContainerHighest"
+            android:padding="10dp"
+            android:text="@string/cmd_help_content"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvCommands"

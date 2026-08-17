@@ -75,6 +75,8 @@
     <string name="cmd_import_ok">已导入 %1$d 条命令</string>
     <string name="cmd_export_ok">已导出 %1$d 条命令</string>
     <string name="cmd_import_empty">未识别到有效命令</string>
+    <string name="cmd_help_title">使用说明</string>
+    <string name="cmd_help_content">● 手动添加: 点右下角 + 新建命令,填名称、内容,选 HEX 或 ASCII。\n● 发送: 点击命令即发送,发送内容会回显到调试窗口。\n● 导入: 点「导入TXT」选择 .txt 文件,自动识别命令并加入列表。\n● 导出: 点「导出TXT」把命令保存为文件,可备份或拷贝给其它设备。\n● 长按命令可编辑或删除。\n● TXT 文件格式(每行一条命令,用 | 分隔):\n  名称 | HEX | 01 03 00 00 00 02 C4 0B\n  名称 | ASCII | at+baud=10\n  # 开头为注释行;格式字段写 HEX 或 ASCII(不区分大小写);内容里含 | 也能正确识别。</string>
     <string name="save">保存</string>
     <string name="cancel">取消</string>
     <string name="delete">删除</string>

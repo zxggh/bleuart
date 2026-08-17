@@ -97,6 +97,10 @@ class CommandFragment : Fragment() {
         binding.fabAdd.setOnClickListener { showEditDialog(null) }
         binding.btnImport.setOnClickListener { importLauncher.launch(arrayOf("text/plain", "*/*")) }
         binding.btnExport.setOnClickListener { exportLauncher.launch("Zxg命令库.txt") }
+        binding.btnHelp.setOnClickListener {
+            binding.tvHelpPanel.visibility =
+                if (binding.tvHelpPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
     }
 
     // ================= 发送 =================

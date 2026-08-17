@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.bluetoothserial"
         minSdk = 24
         targetSdk = 34
-        versionCode = 10
-        versionName = "1.0.9"
+        versionCode = 11
+        versionName = "1.0.10"
     }
 
     // 固定调试签名密钥(已提交到仓库),保证本地与 CI 每次构建签名一致,

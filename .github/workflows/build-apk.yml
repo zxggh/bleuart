@@ -57,10 +57,20 @@ jobs:
         run: |
           VER="${{ steps.ver.outputs.v }}"
           TAG="v$VER"
-          # 同版本重复构建时先删除旧 Release 再重建(幂等)
+          # 同版本重复构建时先删除旧 Release 再重建(幂等),删除失败可忽略
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" app/build/outputs/apk/debug/bluetooth-serial-*.apk \
-            --title "Zxg蓝牙调试助手 v$VER" \
-            --notes "自动构建发布 v$VER" \
-            --generate-notes \
-            --latest
+          # 创建 Release,失败自动重试(应对 GitHub 503/429 等临时故障)
+          for i in 1 2 3 4 5 6 7 8; do
+            if gh release create "$TAG" app/build/outputs/apk/debug/bluetooth-serial-*.apk \
+                --title "Zxg蓝牙调试助手 v$VER" \
+                --notes "自动构建发布 v$VER" \
+                --generate-notes \
+                --latest; then
+              echo "Release $TAG created successfully"
+              exit 0
+            fi
+            echo "gh release create failed (attempt $i/8), retrying in 15s..."
+            sleep 15
+          done
+          echo "Release creation failed after 8 attempts"
+          exit 1

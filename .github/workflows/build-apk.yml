@@ -35,9 +35,12 @@ jobs:
           echo "Building version ${{ steps.ver.outputs.v }}"
           gradle :app:assembleDebug --stacktrace
 
-      - name: Upload APK 产物(带版本号,便于区分新旧包)
+      - name: Rename APK with version
+        run: cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/bluetooth-serial-${{ steps.ver.outputs.v }}.apk"
+
+      - name: Upload APK 产物(zip 与 APK 文件名都带版本号)
         uses: actions/upload-artifact@v4
         with:
           name: bluetooth-serial-apk-${{ steps.ver.outputs.v }}
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/bluetooth-serial-*.apk
           if-no-files-found: error

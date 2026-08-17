@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.URL
 
@@ -90,7 +91,12 @@ object UpdateChecker {
     private fun getSystemProxy(context: Context): Proxy? {
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            cm.defaultProxy
+            val info = cm.defaultProxy // android.net.ProxyInfo
+            if (info != null && !info.host.isNullOrEmpty()) {
+                Proxy(Proxy.Type.HTTP, InetSocketAddress(info.host, info.port))
+            } else {
+                null
+            }
         } catch (_: Exception) {
             null
         }

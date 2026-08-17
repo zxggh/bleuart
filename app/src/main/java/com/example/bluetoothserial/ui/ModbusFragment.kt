@@ -217,7 +217,8 @@ class ModbusFragment : Fragment() {
     }
 
     private fun clearRx() {
-        flushHandler.removeCallbacks(flushRunnable)
+        // 注意:不能 removeCallbacks(flushRunnable),否则周期刷新器被永久停止,
+        // 外部自发数据将无法刷新到界面。周期检查器常驻,空缓冲时自动跳过。
         rxLineBuffer.reset()
         rxLineStartTs = 0L
         modbusLog.delete(0, modbusLog.length)

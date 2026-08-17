@@ -82,6 +82,9 @@ class ModbusFragment : Fragment() {
         binding.btnSendModbus.setOnClickListener { sendFrame() }
         binding.btnModbusClear.setOnClickListener { clearRx() }
 
+        // 启动接收行周期检查器
+        flushHandler.postDelayed(flushRunnable, RX_LINE_IDLE_MS)
+
         updatePreview()
     }
 
@@ -124,27 +127,30 @@ class ModbusFragment : Fragment() {
 
     private val rxLineBuffer = ByteArrayOutputStream()
     private var rxLineStartTs = 0L
-    private var lastRxTime = 0L
     private val flushHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val flushRunnable = Runnable {
-        // 超过 HOLD_FLUSH_MS 仍无法凑成完整帧才强制提交,防止悬挂
-        flushPendingRxLine(System.currentTimeMillis() - lastRxTime > HOLD_FLUSH_MS)
+
+    /** 周期检查器:分片间隔 <100ms 合并为一行(一条响应),>100ms 各自成行 */
+    private val flushRunnable = object : Runnable {
+        override fun run() {
+            if (rxLineBuffer.size() > 0) {
+                val age = System.currentTimeMillis() - rxLineStartTs
+                if (age >= RX_LINE_IDLE_MS || rxLineBuffer.size() >= MAX_LINE_BYTES) {
+                    flushPendingRxLine()
+                }
+            }
+            if (_binding != null) flushHandler.postDelayed(this, RX_LINE_IDLE_MS)
+        }
     }
 
     private fun appendRx(rx: RxData) {
         if (rxLineStartTs == 0L) rxLineStartTs = rx.timestamp
-        lastRxTime = System.currentTimeMillis()
         rxLineBuffer.write(rx.bytes)
         processRxBuffer(rx.timestamp)
-        flushHandler.removeCallbacks(flushRunnable)
-        flushHandler.postDelayed(flushRunnable, RX_LINE_IDLE_MS)
     }
 
     private fun processRxBuffer(ts: Long) {
         if (rxLineBuffer.size() == 0) return
         val buf = rxLineBuffer.toByteArray()
-
-        // 1) 换行切分(文本兜底)
         var lastNl = -1
         for (i in buf.indices) {
             if (buf[i] == 0x0A.toByte()) lastNl = i
@@ -160,54 +166,15 @@ class ModbusFragment : Fragment() {
             if (rest.isNotEmpty()) rxLineBuffer.write(rest)
             rxLineStartTs = if (rest.isNotEmpty()) ts else 0L
             if (rest.isNotEmpty()) processRxBuffer(ts)
-            return
-        }
-
-        // 2) Modbus 帧长判断:按帧头(从站+功能码+长度)计算整帧长度,收够即整帧一行
-        val expected = expectedFrameLen(buf)
-        if (expected != null && buf.size >= expected) {
-            commitRxLine(buf.copyOfRange(0, expected), rxLineStartTs)
-            val rest = buf.copyOfRange(expected, buf.size)
-            rxLineBuffer.reset()
-            if (rest.isNotEmpty()) rxLineBuffer.write(rest)
-            rxLineStartTs = if (rest.isNotEmpty()) ts else 0L
-            if (rest.isNotEmpty()) processRxBuffer(ts)
-            return
-        }
-
-        // 3) 超长保护
-        if (buf.size >= MAX_LINE_BYTES) {
-            flushPendingRxLine(force = true)
+        } else if (buf.size >= MAX_LINE_BYTES) {
+            flushPendingRxLine()
         }
     }
 
-    /**
-     * 根据 Modbus RTU 帧头计算整帧长度:
-     * 读类(01-04): 3 + 字节数 + 2(CRC);写单类(05/06/0F/10): 8;异常响应(功能码>=0x80): 5。
-     */
-    private fun expectedFrameLen(buf: ByteArray): Int? {
-        if (buf.size < 2) return null
-        val func = buf[1].toInt() and 0xFF
-        val isError = func and 0x80 != 0
-        val f = func and 0x7F
-        return when {
-            isError -> 5
-            f in 1..4 -> if (buf.size < 3) null else 3 + (buf[2].toInt() and 0xFF) + 2
-            f == 5 || f == 6 || f == 15 || f == 16 -> 8
-            else -> null
-        }
-    }
-
-    private fun flushPendingRxLine(force: Boolean = false) {
+    /** 把缓冲中未换行的数据提交为一行 */
+    private fun flushPendingRxLine() {
         if (rxLineBuffer.size() == 0) return
         val buf = rxLineBuffer.toByteArray()
-        if (!force) {
-            // 已知整帧长度但未收完:等待帧收完整,不提前截断
-            val expected = expectedFrameLen(buf)
-            if (expected != null) return
-            // 疑似 Modbus 帧头(合法从站+功能码)但长度字节未到:等待
-            if (isPlausibleModbusHeader(buf)) return
-        }
         var displayEnd = buf.size
         while (displayEnd > 0 && (buf[displayEnd - 1] == 0x0A.toByte() || buf[displayEnd - 1] == 0x0D.toByte())) {
             displayEnd--
@@ -215,15 +182,6 @@ class ModbusFragment : Fragment() {
         commitRxLine(buf.copyOfRange(0, displayEnd), rxLineStartTs)
         rxLineBuffer.reset()
         rxLineStartTs = 0L
-    }
-
-    /** 数据过少或像是未收全的 Modbus 帧头时等待,不提前分行 */
-    private fun isPlausibleModbusHeader(buf: ByteArray): Boolean {
-        if (buf.size < 2) return true
-        val slave = buf[0].toInt() and 0xFF
-        val func = buf[1].toInt() and 0xFF
-        val f = func and 0x7F
-        return slave in 1..247 && (f in 1..6 || f == 15 || f == 16)
     }
 
     private fun commitRxLine(bytes: ByteArray, ts: Long) {
@@ -373,7 +331,6 @@ class ModbusFragment : Fragment() {
         private const val MAX_RX_CHARS = 300_000
         private const val MAX_LINE_BYTES = 4096
         private const val RX_LINE_IDLE_MS = 100L
-        private const val HOLD_FLUSH_MS = 800L
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
     }

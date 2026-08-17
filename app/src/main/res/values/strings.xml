@@ -17,6 +17,7 @@
     <string name="connecting">连接中…</string>
     <string name="conn_classic">经典蓝牙 SPP · %1$s</string>
     <string name="conn_ble">BLE UART · %1$s</string>
+    <string name="conn_last_disconnected">已断开,点「连接」可直接重连</string>
 
     <!-- 接收区 -->
     <string name="receive_placeholder">暂无接收数据</string>

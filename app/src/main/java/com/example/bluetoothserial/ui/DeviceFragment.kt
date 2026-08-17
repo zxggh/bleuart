@@ -232,11 +232,12 @@ class DeviceFragment : Fragment() {
         val idx = deviceList.indexOfFirst { it.address == d.address && it.isBle == d.isBle }
         if (idx >= 0) {
             deviceList[idx] = d
-            scheduleRefresh()
         } else {
             deviceList.add(d)
-            adapter.notifyDataSetChanged()
         }
+        // 专有模块(E104-BT5005A)排到最前,方便连接
+        deviceList.sortWith(devicePriorityComparator)
+        adapter.notifyDataSetChanged()
     }
 
     private fun scheduleRefresh() {
@@ -244,8 +245,20 @@ class DeviceFragment : Fragment() {
         refreshScheduled = true
         view?.postDelayed({
             refreshScheduled = false
+            deviceList.sortWith(devicePriorityComparator)
             adapter.notifyDataSetChanged()
         }, 300)
+    }
+
+    /** 名称含 E104-BT5005A 的专有模块排最前 */
+    private val devicePriorityComparator = Comparator<BtDevice> { a, b ->
+        val pa = a.name.contains(PRIORITY_NAME)
+        val pb = b.name.contains(PRIORITY_NAME)
+        when {
+            pa && !pb -> -1
+            !pa && pb -> 1
+            else -> 0
+        }
     }
 
     // ================= 连接 =================
@@ -287,5 +300,9 @@ class DeviceFragment : Fragment() {
         bm.adapter
     } catch (_: Exception) {
         null
+    }
+
+    companion object {
+        private const val PRIORITY_NAME = "E104-BT5005A"
     }
 }

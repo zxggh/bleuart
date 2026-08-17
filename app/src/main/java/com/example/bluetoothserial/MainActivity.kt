@@ -20,7 +20,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import com.example.bluetoothserial.bt.ConnState
+import com.example.bluetoothserial.bt.ConnectionManager
+import com.example.bluetoothserial.bt.ConnType
 import com.example.bluetoothserial.data.AppUpdate
+import com.example.bluetoothserial.data.BleSettingsPrefs
 import com.example.bluetoothserial.data.UpdateChecker
 import com.example.bluetoothserial.databinding.ActivityMainBinding
 import com.example.bluetoothserial.ui.CommandFragment
@@ -133,11 +137,68 @@ class MainActivity : AppCompatActivity() {
 
         // 自动检查更新(每 24 小时静默检查一次,发现新版本才提示)
         autoCheckUpdate()
+
+        // 记录最后连接的设备(用于断开后一键重连)
+        ConnectionManager.addStateListener(connStateListener)
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        ConnectionManager.removeStateListener(connStateListener)
         try { unregisterReceiver(downloadReceiver) } catch (_: Exception) {}
+    }
+
+    // ---------------- 最后连接设备(断开后可一键重连) ----------------
+
+    private val connStateListener: (ConnState) -> Unit = { s ->
+        if (s.isConnected) {
+            getSharedPreferences("last_device", Context.MODE_PRIVATE).edit()
+                .putString("name", s.deviceName ?: "")
+                .putString("address", s.deviceAddress ?: "")
+                .putBoolean("is_ble", s.type == ConnType.BLE)
+                .apply()
+        }
+    }
+
+    /** 最后连接设备的名称(无则返回 null) */
+    fun lastDeviceLabel(): String? {
+        val p = getSharedPreferences("last_device", Context.MODE_PRIVATE)
+        val addr = p.getString("address", null) ?: return null
+        return p.getString("name", addr) ?: addr
+    }
+
+    /** 调试页「连接」按钮:有上次设备则直接重连,否则进入设备页 */
+    fun onConnectClick() {
+        val p = getSharedPreferences("last_device", Context.MODE_PRIVATE)
+        val addr = p.getString("address", null)
+        val name = p.getString("name", addr)
+        if (addr.isNullOrEmpty()) {
+            switchToDevices()
+            return
+        }
+        ensureBluetoothPermissions {
+            val bt = bluetoothAdapter()
+            if (bt == null) {
+                Toast.makeText(this, R.string.bt_not_supported, Toast.LENGTH_LONG).show()
+                switchToDevices()
+                return@ensureBluetoothPermissions
+            }
+            val dev = try { bt.getRemoteDevice(addr) } catch (_: Exception) { null }
+            if (dev == null) {
+                switchToDevices()
+                return@ensureBluetoothPermissions
+            }
+            ConnectionManager.errorCallback = { msg ->
+                Toast.makeText(this, msg ?: getString(R.string.conn_failed), Toast.LENGTH_LONG).show()
+            }
+            val isBle = p.getBoolean("is_ble", true)
+            if (isBle) {
+                ConnectionManager.connectBle(this, dev, BleSettingsPrefs.load(this))
+            } else {
+                ConnectionManager.connectClassic(dev)
+            }
+            Toast.makeText(this, getString(R.string.connecting_to, name ?: addr), Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun showFragment(target: Fragment?) {

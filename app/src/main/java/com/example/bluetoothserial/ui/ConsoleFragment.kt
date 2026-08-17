@@ -104,9 +104,12 @@ class ConsoleFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         historyRepo = SendHistoryRepository(requireContext())
 
-        // 接收/发送格式+编码(合并下拉,默认 HEX)
-        rxModeIndex = setupModeSpinner(binding.spRxFormat, KEY_MODE_RX) { renderFromQueue() }
-        txModeIndex = setupModeSpinner(binding.spTxFormat, KEY_MODE_TX) {}
+        // 接收/发送格式+编码(合并下拉,默认 HEX)。选择变化时必须同步更新模式索引
+        rxModeIndex = setupModeSpinner(binding.spRxFormat, KEY_MODE_RX) { pos ->
+            rxModeIndex = pos
+            renderFromQueue()
+        }
+        txModeIndex = setupModeSpinner(binding.spTxFormat, KEY_MODE_TX) { pos -> txModeIndex = pos }
 
         // 行尾
         binding.spLineEnd.adapter = ArrayAdapter(
@@ -119,7 +122,7 @@ class ConsoleFragment : Fragment() {
         binding.btnHistory.setOnClickListener { showHistoryDialog() }
         binding.btnMore.setOnClickListener { showMoreMenu() }
         binding.btnDisconnect.setOnClickListener { ConnectionManager.disconnect() }
-        binding.btnConnect.setOnClickListener { (activity as? MainActivity)?.switchToDevices() }
+        binding.btnConnect.setOnClickListener { (activity as? MainActivity)?.onConnectClick() }
         binding.btnUuidSetting.setOnClickListener { showBleSettingsDialog() }
 
         binding.cbLoop.setOnCheckedChangeListener { _, checked ->
@@ -186,8 +189,15 @@ class ConsoleFragment : Fragment() {
 
         when (state.type) {
             ConnType.NONE -> {
-                binding.tvDeviceName.text = getString(R.string.not_connected)
-                binding.tvConnInfo.text = getString(R.string.conn_info_default)
+                // 断开时仍显示最后连接的设备,可直接点「连接」重连
+                val last = (activity as? MainActivity)?.lastDeviceLabel()
+                if (last != null) {
+                    binding.tvDeviceName.text = last
+                    binding.tvConnInfo.text = getString(R.string.conn_last_disconnected)
+                } else {
+                    binding.tvDeviceName.text = getString(R.string.not_connected)
+                    binding.tvConnInfo.text = getString(R.string.conn_info_default)
+                }
                 binding.btnDisconnect.isEnabled = false
                 stopLoop()
             }
@@ -324,11 +334,15 @@ class ConsoleFragment : Fragment() {
         }
     }
 
-    /** 未暂停时始终滚动到最后一行 */
+    /** 未暂停时始终滚动到最后一行(双重 post 确保布局完成后定位到底部) */
     private fun autoScroll(force: Boolean = false) {
         if (paused && !force) return
         binding.scrollReceive.post {
-            binding.scrollReceive.fullScroll(View.FOCUS_DOWN)
+            binding.scrollReceive.post {
+                val sv = binding.scrollReceive
+                val child = sv.getChildAt(0)
+                if (child != null) sv.scrollTo(0, child.height)
+            }
         }
     }
 
@@ -406,6 +420,8 @@ class ConsoleFragment : Fragment() {
         val input = binding.etSend.text?.toString().orEmpty()
         if (input.isBlank()) return false
         val data = buildSendBytes(input) ?: return false
+        // 发送前先把上一轮的接收提交为一行,让 TX/RX 交替显示
+        flushPendingRxLine()
         if (ConnectionManager.send(data)) {
             // 定时发送也要回显 TX
             appendTxSent(data)

@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- 网络:在线更新检查/下载 APK 必需 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- BLE 扫描 / 连接:Android 12+ 为运行时权限;部分国产 ROM 在 12+ 仍要求定位权限,故全版本申请 -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />

@@ -70,6 +70,11 @@
     <string name="cmd_name_data_required">命令名称和内容不能为空</string>
     <string name="cmd_invalid_format">命令「%1$s」HEX 格式错误</string>
     <string name="cmd_sent">已发送命令「%1$s」</string>
+    <string name="cmd_import">导入TXT</string>
+    <string name="cmd_export">导出TXT</string>
+    <string name="cmd_import_ok">已导入 %1$d 条命令</string>
+    <string name="cmd_export_ok">已导出 %1$d 条命令</string>
+    <string name="cmd_import_empty">未识别到有效命令</string>
     <string name="save">保存</string>
     <string name="cancel">取消</string>
     <string name="delete">删除</string>

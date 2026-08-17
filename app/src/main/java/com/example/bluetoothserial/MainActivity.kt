@@ -222,6 +222,11 @@ class MainActivity : AppCompatActivity() {
         binding.bottomNav.selectedItemId = R.id.nav_devices
     }
 
+    /** 其它页面(命令页等)发送的数据回显到调试窗口 */
+    fun echoTxToConsole(bytes: ByteArray, hex: Boolean, charset: String) {
+        consoleFragment?.appendExternalTx(bytes, hex, charset)
+    }
+
     // ---------------- 更新检查与安装 ----------------
 
     private fun updatePrefs() = getSharedPreferences("update_prefs", Context.MODE_PRIVATE)

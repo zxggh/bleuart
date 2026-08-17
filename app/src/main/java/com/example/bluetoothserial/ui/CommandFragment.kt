@@ -5,10 +5,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.bluetoothserial.MainActivity
 import com.example.bluetoothserial.R
 import com.example.bluetoothserial.bt.ConnectionManager
+import com.example.bluetoothserial.data.CommandFileFormat
 import com.example.bluetoothserial.data.CommandRepository
 import com.example.bluetoothserial.data.CustomCommand
 import com.example.bluetoothserial.databinding.DialogCommandEditBinding
@@ -19,7 +22,8 @@ import com.example.bluetoothserial.util.HexUtils
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
- * 自定义命令页:点击发送、长按编辑/删除、FAB 新增,本地持久化
+ * 自定义命令页:点击发送(回显到调试窗口)、长按编辑/删除、FAB 新增、
+ * TXT 导入/导出,本地持久化
  */
 class CommandFragment : Fragment() {
 
@@ -29,6 +33,48 @@ class CommandFragment : Fragment() {
     private lateinit var repo: CommandRepository
     private val commands = mutableListOf<CustomCommand>()
     private lateinit var adapter: CommandAdapter
+
+    private val importLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                try {
+                    requireContext().contentResolver.openInputStream(uri)?.use { ins ->
+                        val text = ins.bufferedReader().readText()
+                        val parsed = CommandFileFormat.parse(text)
+                        if (parsed.isEmpty()) {
+                            Toast.makeText(requireContext(), R.string.cmd_import_empty, Toast.LENGTH_SHORT).show()
+                        } else {
+                            commands.addAll(parsed)
+                            repo.save(commands)
+                            adapter.notifyDataSetChanged()
+                            Toast.makeText(
+                                requireContext(),
+                                getString(R.string.cmd_import_ok, parsed.size),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                } catch (_: Exception) {
+                    Toast.makeText(requireContext(), R.string.cmd_import_empty, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+    private val exportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+            if (uri != null) {
+                try {
+                    requireContext().contentResolver.openOutputStream(uri)?.use { os ->
+                        os.write(CommandFileFormat.toText(commands).toByteArray(Charsets.UTF_8))
+                        Toast.makeText(
+                            requireContext(),
+                            getString(R.string.cmd_export_ok, commands.size),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } catch (_: Exception) {}
+            }
+        }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentCommandsBinding.inflate(inflater, container, false)
@@ -49,6 +95,8 @@ class CommandFragment : Fragment() {
         binding.rvCommands.layoutManager = LinearLayoutManager(requireContext())
         binding.rvCommands.adapter = adapter
         binding.fabAdd.setOnClickListener { showEditDialog(null) }
+        binding.btnImport.setOnClickListener { importLauncher.launch(arrayOf("text/plain", "*/*")) }
+        binding.btnExport.setOnClickListener { exportLauncher.launch("Zxg命令库.txt") }
     }
 
     // ================= 发送 =================
@@ -73,6 +121,12 @@ class CommandFragment : Fragment() {
                 getString(R.string.cmd_sent, cmd.name),
                 Toast.LENGTH_SHORT
             ).show()
+            // 回显到调试窗口(TX 蓝行)
+            (activity as? MainActivity)?.echoTxToConsole(
+                bytes,
+                cmd.format == DataFormat.HEX,
+                currentCharset().javaName
+            )
         } else {
             Toast.makeText(requireContext(), R.string.not_connected_msg, Toast.LENGTH_SHORT).show()
         }

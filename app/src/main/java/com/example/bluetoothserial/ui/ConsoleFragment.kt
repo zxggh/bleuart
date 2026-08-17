@@ -452,6 +452,20 @@ class ConsoleFragment : Fragment() {
         autoScroll()
     }
 
+    /** 供其它页面(如命令页)发送的数据回显到调试窗口 */
+    fun appendExternalTx(bytes: ByteArray, hex: Boolean, charset: String) {
+        val b = _binding ?: return
+        val tx = DisplayItem.Tx(bytes, System.currentTimeMillis(), hex, charset)
+        displayQueue.addLast(tx)
+        while (displayQueue.size > 5000) displayQueue.removeFirst()
+        txBytesTotal += bytes.size
+        logBuilder.append(renderTx(tx))
+        trimLog()
+        b.tvReceive.text = logBuilder
+        updateStats()
+        autoScroll()
+    }
+
     private fun buildSendBytes(input: String): ByteArray? {
         val base: ByteArray = if (txIsHex) {
             HexUtils.parseHex(input) ?: return null

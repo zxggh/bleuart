@@ -249,10 +249,16 @@ class MainActivity : AppCompatActivity() {
             "1.0.0"
         }
         val url = currentUpdateUrl()
-        UpdateChecker.check(this, url, current) { ok, update ->
+        UpdateChecker.check(this, url, current) { ok, update, err ->
             runOnUiThread {
                 if (!ok) {
-                    if (manual) Toast.makeText(this, R.string.update_fail, Toast.LENGTH_LONG).show()
+                    if (manual) {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.update_fail_detail, err ?: "未知错误"),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                     return@runOnUiThread
                 }
                 val u = update

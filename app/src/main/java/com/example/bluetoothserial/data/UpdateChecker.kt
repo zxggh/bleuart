@@ -36,14 +36,16 @@ object UpdateChecker {
      * @param context 用于读取系统代理(Android 系统代理设置)
      * @param updateUrl 更新源 URL(version.json 或 GitHub Releases API)
      * @param currentVersionName 当前版本号(如 1.0.0)
-     * @param onResult (ok=是否成功获取到更新源信息, update=新版本信息,null 表示已是最新)
+     * @param onResult (ok=是否成功获取到更新源信息, update=新版本信息,null 表示已是最新,
+     *                 err=失败原因描述,便于排查)
      *                 在后台线程回调,调用方需自行切回主线程
      */
-    fun check(context: Context, updateUrl: String, currentVersionName: String, onResult: (Boolean, AppUpdate?) -> Unit) {
+    fun check(context: Context, updateUrl: String, currentVersionName: String, onResult: (Boolean, AppUpdate?, String?) -> Unit) {
         val url = updateUrl.ifBlank { DEFAULT_UPDATE_URL }
         Thread({
             var ok = false
             var update: AppUpdate? = null
+            var err: String? = null
             // 失败自动重试一次
             for (attempt in 0..1) {
                 try {
@@ -52,7 +54,8 @@ object UpdateChecker {
                     conn.readTimeout = 12000
                     conn.requestMethod = "GET"
                     conn.setRequestProperty("User-Agent", "ZxgBluetoothAssistant")
-                    if (conn.responseCode == 200) {
+                    val code = conn.responseCode
+                    if (code == 200) {
                         val body = conn.inputStream.bufferedReader().readText()
                         update = if (url.contains("api.github.com")) {
                             parseGitHubRelease(body, currentVersionName)
@@ -60,15 +63,17 @@ object UpdateChecker {
                             parseCustomVersionJson(body, currentVersionName)
                         }
                         ok = true
+                    } else {
+                        err = "HTTP $code"
                     }
                     conn.disconnect()
                     if (ok) break
-                } catch (_: Exception) {
-                    // 重试
+                } catch (e: Exception) {
+                    err = e.message ?: e.javaClass.simpleName
                 }
                 try { Thread.sleep(500) } catch (_: InterruptedException) {}
             }
-            onResult(ok, update)
+            onResult(ok, update, err)
         }, "update-check").start()
     }
 

@@ -1,8 +1,11 @@
 package com.example.bluetoothserial.data
 
+import android.content.Context
+import android.net.ConnectivityManager
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.Proxy
 import java.net.URL
 
 /** 检查到的新版本信息 */
@@ -30,37 +33,62 @@ object UpdateChecker {
 
     /**
      * 检查更新。
+     * @param context 用于读取系统代理(Android 系统代理设置)
      * @param updateUrl 更新源 URL(version.json 或 GitHub Releases API)
      * @param currentVersionName 当前版本号(如 1.0.0)
      * @param onResult (ok=是否成功获取到更新源信息, update=新版本信息,null 表示已是最新)
      *                 在后台线程回调,调用方需自行切回主线程
      */
-    fun check(updateUrl: String, currentVersionName: String, onResult: (Boolean, AppUpdate?) -> Unit) {
+    fun check(context: Context, updateUrl: String, currentVersionName: String, onResult: (Boolean, AppUpdate?) -> Unit) {
         val url = updateUrl.ifBlank { DEFAULT_UPDATE_URL }
         Thread({
             var ok = false
             var update: AppUpdate? = null
-            try {
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
-                conn.requestMethod = "GET"
-                conn.setRequestProperty("User-Agent", "ZxgBluetoothAssistant")
-                if (conn.responseCode == 200) {
-                    val body = conn.inputStream.bufferedReader().readText()
-                    update = if (url.contains("api.github.com")) {
-                        parseGitHubRelease(body, currentVersionName)
-                    } else {
-                        parseCustomVersionJson(body, currentVersionName)
+            // 失败自动重试一次
+            for (attempt in 0..1) {
+                try {
+                    val conn = openConnection(context, url)
+                    conn.connectTimeout = 12000
+                    conn.readTimeout = 12000
+                    conn.requestMethod = "GET"
+                    conn.setRequestProperty("User-Agent", "ZxgBluetoothAssistant")
+                    if (conn.responseCode == 200) {
+                        val body = conn.inputStream.bufferedReader().readText()
+                        update = if (url.contains("api.github.com")) {
+                            parseGitHubRelease(body, currentVersionName)
+                        } else {
+                            parseCustomVersionJson(body, currentVersionName)
+                        }
+                        ok = true
                     }
-                    ok = true
+                    conn.disconnect()
+                    if (ok) break
+                } catch (_: Exception) {
+                    // 重试
                 }
-                conn.disconnect()
-            } catch (_: Exception) {
-                ok = false
+                try { Thread.sleep(500) } catch (_: InterruptedException) {}
             }
             onResult(ok, update)
         }, "update-check").start()
+    }
+
+    /** 读取手机系统代理并建立连接(Android 系统代理设置默认不被 HttpURLConnection 使用) */
+    private fun openConnection(context: Context, url: String): HttpURLConnection {
+        val proxy = getSystemProxy(context)
+        return if (proxy != null && proxy != Proxy.NO_PROXY) {
+            URL(url).openConnection(proxy) as HttpURLConnection
+        } else {
+            URL(url).openConnection() as HttpURLConnection
+        }
+    }
+
+    private fun getSystemProxy(context: Context): Proxy? {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            cm.defaultProxy
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /** 解析 GitHub Releases API 响应 */

@@ -315,12 +315,24 @@ class ModuleSettingsFragment : Fragment() {
         updateModeButtonAppearance(inConfig)
     }
 
+    /** 两个模式按钮均描边(蓝色边框);当前模式的按钮填充蓝色,另一个为页面背景色 */
     private fun updateModeButtonAppearance(inConfig: Boolean) {
         val primary = ContextCompat.getColor(requireContext(), R.color.primary)
-        binding.btnEnterConfig.setBackgroundTintList(
-            if (inConfig) ColorStateList.valueOf(primary) else ColorStateList.valueOf(Color.TRANSPARENT)
-        )
-        binding.btnEnterConfig.setTextColor(if (inConfig) Color.WHITE else primary)
+        val primaryList = ColorStateList.valueOf(primary)
+        val transparentList = ColorStateList.valueOf(Color.TRANSPARENT)
+        binding.btnEnterConfig.strokeColor = primaryList
+        binding.btnExitConfig.strokeColor = primaryList
+        if (inConfig) {
+            binding.btnEnterConfig.setBackgroundTintList(primaryList)
+            binding.btnEnterConfig.setTextColor(Color.WHITE)
+            binding.btnExitConfig.setBackgroundTintList(transparentList)
+            binding.btnExitConfig.setTextColor(primary)
+        } else {
+            binding.btnEnterConfig.setBackgroundTintList(transparentList)
+            binding.btnEnterConfig.setTextColor(primary)
+            binding.btnExitConfig.setBackgroundTintList(primaryList)
+            binding.btnExitConfig.setTextColor(Color.WHITE)
+        }
     }
 
     companion object {

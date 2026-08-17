@@ -10,18 +10,9 @@
         android:padding="16dp">
 
         <TextView
-            android:id="@+id/tvModuleHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/module_hint"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="12sp" />
-
-        <TextView
             android:id="@+id/tvModuleStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -50,6 +41,7 @@
 
             <Button
                 android:id="@+id/btnEnterConfig"
+                style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="4dp"
@@ -124,14 +116,5 @@
                 android:minWidth="0dp"
                 android:text="@string/module_cmd_set" />
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/tvModuleAtHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/module_at_hint"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

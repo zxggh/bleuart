@@ -131,21 +131,21 @@ class ConsoleFragment : Fragment() {
     }
 
     /**
-     * 初始化合并格式下拉: [HEX][UTF-8][GBK][GB2312][GB18030]。
-     * 返回当前选中的索引(0=HEX)。
+     * 初始化合并格式下拉: [HEX][ASCII][UTF-8][GBK][GB2312][GB18030]。
+     * 返回当前选中的索引(0=HEX)。按名称存储,避免选项顺序变化导致错位。
      */
     private fun setupModeSpinner(spinner: Spinner, prefsKey: String, onSelect: (Int) -> Unit): Int {
         val labels = listOf("HEX") + TextCharset.entries.map { it.label }
         spinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, labels).apply {
             setDropDownViewResource(R.layout.spinner_dropdown_item)
         }
-        val saved = requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
-            .getInt(prefsKey, 0).coerceIn(0, labels.size - 1)
+        val prefs = requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val savedLabel = prefs.getString(prefsKey, "HEX") ?: "HEX"
+        val saved = labels.indexOf(savedLabel).coerceAtLeast(0)
         spinner.setSelection(saved)
         spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                requireContext().getSharedPreferences("settings", Context.MODE_PRIVATE)
-                    .edit().putInt(prefsKey, position).apply()
+                prefs.edit().putString(prefsKey, labels[position]).apply()
                 onSelect(position)
             }
 

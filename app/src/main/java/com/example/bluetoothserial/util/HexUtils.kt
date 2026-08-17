@@ -16,14 +16,18 @@ object HexUtils {
     /**
      * 解析 HEX 字符串为字节数组。
      * 支持任意分隔符(空格、逗号、0x 前缀等),会自动过滤非十六进制字符。
-     * 如果字符总数为奇数则返回 null(格式错误)。
+     * 如果字符总数为奇数,自动在最后一位前补零,如 "123" -> "1203"。
      */
     fun parseHex(input: String): ByteArray? {
         val clean = input.replace(Regex("[^0-9a-fA-F]"), "")
         if (clean.isEmpty()) return ByteArray(0)
-        if (clean.length % 2 != 0) return null
-        return ByteArray(clean.length / 2) { i ->
-            clean.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+        val normalized = if (clean.length % 2 == 1) {
+            clean.substring(0, clean.length - 1) + "0" + clean.substring(clean.length - 1)
+        } else {
+            clean
+        }
+        return ByteArray(normalized.length / 2) { i ->
+            normalized.substring(i * 2, i * 2 + 2).toInt(16).toByte()
         }
     }
 

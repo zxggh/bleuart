@@ -95,21 +95,13 @@ class CommandFragment : Fragment() {
     private fun showEditDialog(existing: CustomCommand?) {
         val dlg = DialogCommandEditBinding.inflate(layoutInflater)
 
-        dlg.toggleCmdFormat.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
-            dlg.etCmdData.hint = if (checkedId == R.id.cmdHex) {
-                getString(R.string.cmd_data_hex_hint)
-            } else {
-                getString(R.string.cmd_data_ascii_hint)
-            }
-        }
+        // 提示由 TextInputLayout 标签承担,不再设置输入框 hint,避免重叠
 
         if (existing != null) {
             dlg.etCmdName.setText(existing.name)
             dlg.etCmdData.setText(existing.data)
             dlg.toggleCmdFormat.check(if (existing.format == DataFormat.HEX) R.id.cmdHex else R.id.cmdAscii)
         } else {
-            dlg.etCmdData.hint = getString(R.string.cmd_data_hex_hint)
             dlg.toggleCmdFormat.check(R.id.cmdHex)
         }
 
@@ -127,10 +119,6 @@ class CommandFragment : Fragment() {
                     DataFormat.HEX
                 } else {
                     DataFormat.ASCII
-                }
-                if (format == DataFormat.HEX && HexUtils.parseHex(data) == null) {
-                    Toast.makeText(requireContext(), R.string.hex_invalid, Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
                 }
                 if (existing != null) {
                     val idx = commands.indexOfFirst { it.id == existing.id }

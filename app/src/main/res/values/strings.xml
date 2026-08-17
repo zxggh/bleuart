@@ -143,7 +143,7 @@
     </string-array>
 
     <!-- Modbus RTU 页 -->
-    <string name="modbus_hint">Modbus RTU 帧生成:填写参数后自动计算 CRC16,点「发送」按 HEX 发送(无行尾)。</string>
+    <string name="modbus_hint">Modbus RTU 帧格式: [从站地址 1B][功能码 1B][数据区 N B][CRC16 2B(低字节在前)]。\n填写参数后自动计算 CRC16,点「发送」按 HEX 发送(无行尾)。</string>
     <string name="modbus_slave">从站地址</string>
     <string name="modbus_func">功能码</string>
     <string name="modbus_start">起始地址</string>

@@ -74,6 +74,7 @@ class ModbusFragment : Fragment() {
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+        binding.spFunction.setSelection(2) // 默认 03 读保持寄存器
 
         binding.etSlave.doAfterTextChanged { updatePreview() }
         binding.etStart.doAfterTextChanged { updatePreview() }
@@ -86,16 +87,32 @@ class ModbusFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        ConnectionManager.addDataListener(dataListener)
+        // 仅页面可见时监听,避免未打开本页时也接收显示数据
+        if (!isHidden) setListening(true)
     }
 
     override fun onPause() {
         super.onPause()
-        ConnectionManager.removeDataListener(dataListener)
+        setListening(false)
+    }
+
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (hidden) setListening(false) else if (isResumed) setListening(true)
+    }
+
+    private var listening = false
+
+    private fun setListening(on: Boolean) {
+        if (on == listening) return
+        listening = on
+        if (on) ConnectionManager.addDataListener(dataListener)
+        else ConnectionManager.removeDataListener(dataListener)
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        setListening(false)
         _binding = null
     }
 

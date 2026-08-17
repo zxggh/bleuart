@@ -262,6 +262,7 @@ class ConsoleFragment : Fragment() {
         commitRxLine(buf.copyOfRange(0, displayEnd), rxLineStartTs)
         rxLineBuffer.reset()
         rxLineStartTs = 0L
+        autoScroll()
     }
 
     private fun commitRxLine(bytes: ByteArray, ts: Long) {
@@ -405,10 +406,17 @@ class ConsoleFragment : Fragment() {
         val input = binding.etSend.text?.toString().orEmpty()
         if (input.isBlank()) return false
         val data = buildSendBytes(input) ?: return false
-        return ConnectionManager.send(data)
+        if (ConnectionManager.send(data)) {
+            // 定时发送也要回显 TX
+            appendTxSent(data)
+            return true
+        }
+        return false
     }
 
+    /** 发送回显:先把未换行的接收提交为一行(发送动作充当分隔符),再显示 TX */
     private fun appendTxSent(bytes: ByteArray) {
+        flushPendingRxLine()
         val tx = DisplayItem.Tx(bytes, System.currentTimeMillis(), txIsHex, txCharset.javaName)
         displayQueue.addLast(tx)
         while (displayQueue.size > 5000) displayQueue.removeFirst()
@@ -512,7 +520,7 @@ class ConsoleFragment : Fragment() {
     companion object {
         private const val MAX_LOG_CHARS = 400_000
         private const val MAX_LINE_BYTES = 4096
-        private const val RX_LINE_IDLE_MS = 150L
+        private const val RX_LINE_IDLE_MS = 50L
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
         private const val KEY_MODE_RX = "mode_rx"

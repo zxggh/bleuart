@@ -39,7 +39,7 @@
             android:layout_marginTop="16dp"
             android:orientation="horizontal">
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnEnterConfig"
                 style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="0dp"
@@ -49,7 +49,7 @@
                 android:enabled="false"
                 android:text="@string/module_enter_config" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnExitConfig"
                 style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="0dp"

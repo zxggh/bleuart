@@ -89,15 +89,18 @@ class ModbusFragment : Fragment() {
         super.onResume()
         // 仅页面可见时监听,避免未打开本页时也接收显示数据
         if (!isHidden) setListening(true)
+        isPageVisible = !isHidden
     }
 
     override fun onPause() {
         super.onPause()
         setListening(false)
+        isPageVisible = false
     }
 
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
+        isPageVisible = !hidden
         if (hidden) setListening(false) else if (isResumed) setListening(true)
     }
 
@@ -135,6 +138,8 @@ class ModbusFragment : Fragment() {
     private fun processRxBuffer(ts: Long) {
         if (rxLineBuffer.size() == 0) return
         val buf = rxLineBuffer.toByteArray()
+
+        // 1) 换行切分(文本兜底)
         var lastNl = -1
         for (i in buf.indices) {
             if (buf[i] == 0x0A.toByte()) lastNl = i
@@ -150,14 +155,50 @@ class ModbusFragment : Fragment() {
             if (rest.isNotEmpty()) rxLineBuffer.write(rest)
             rxLineStartTs = if (rest.isNotEmpty()) ts else 0L
             if (rest.isNotEmpty()) processRxBuffer(ts)
-        } else if (buf.size >= MAX_LINE_BYTES) {
+            return
+        }
+
+        // 2) Modbus 帧长判断:按帧头(从站+功能码+长度)计算整帧长度,收够即整帧一行
+        val expected = expectedFrameLen(buf)
+        if (expected != null && buf.size >= expected) {
+            commitRxLine(buf.copyOfRange(0, expected), rxLineStartTs)
+            val rest = buf.copyOfRange(expected, buf.size)
+            rxLineBuffer.reset()
+            if (rest.isNotEmpty()) rxLineBuffer.write(rest)
+            rxLineStartTs = if (rest.isNotEmpty()) ts else 0L
+            if (rest.isNotEmpty()) processRxBuffer(ts)
+            return
+        }
+
+        // 3) 超长保护
+        if (buf.size >= MAX_LINE_BYTES) {
             flushPendingRxLine()
+        }
+    }
+
+    /**
+     * 根据 Modbus RTU 帧头计算整帧长度:
+     * 读类(01-04): 3 + 字节数 + 2(CRC);写单类(05/06/0F/10): 8;异常响应(功能码>=0x80): 5。
+     */
+    private fun expectedFrameLen(buf: ByteArray): Int? {
+        if (buf.size < 2) return null
+        val func = buf[1].toInt() and 0xFF
+        val isError = func and 0x80 != 0
+        val f = func and 0x7F
+        return when {
+            isError -> 5
+            f in 1..4 -> if (buf.size < 3) null else 3 + (buf[2].toInt() and 0xFF) + 2
+            f == 5 || f == 6 || f == 15 || f == 16 -> 8
+            else -> null
         }
     }
 
     private fun flushPendingRxLine() {
         if (rxLineBuffer.size() == 0) return
         val buf = rxLineBuffer.toByteArray()
+        // 已知整帧长度但未收完时,等待帧收完整(不提前截断)
+        val expected = expectedFrameLen(buf)
+        if (expected != null && buf.size < expected) return
         var displayEnd = buf.size
         while (displayEnd > 0 && (buf[displayEnd - 1] == 0x0A.toByte() || buf[displayEnd - 1] == 0x0D.toByte())) {
             displayEnd--
@@ -307,9 +348,13 @@ class ModbusFragment : Fragment() {
     }
 
     companion object {
+        /** 本页是否可见:可见期间调试窗口暂停显示接收,数据只在本页展示 */
+        @Volatile
+        var isPageVisible: Boolean = false
+
         private const val MAX_RX_CHARS = 300_000
         private const val MAX_LINE_BYTES = 4096
-        private const val RX_LINE_IDLE_MS = 50L
+        private const val RX_LINE_IDLE_MS = 100L
         private const val TX_COLOR = 0xFF1E88E5.toInt()
         private const val RX_COLOR = 0xFF43A047.toInt()
     }

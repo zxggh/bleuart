@@ -221,6 +221,8 @@ class ConsoleFragment : Fragment() {
     // ================= 接收(按包间间隔合并 BLE 分片) =================
 
     private fun appendReceived(rx: RxData) {
+        // Modbus 页打开时,本页不显示接收(数据只在 Modbus 页展示)
+        if (ModbusFragment.isPageVisible) return
         rxBytesTotal += rx.bytes.size
         if (rxLineStartTs == 0L) rxLineStartTs = rx.timestamp
         rxLineBuffer.write(rx.bytes)
@@ -416,8 +418,7 @@ class ConsoleFragment : Fragment() {
         val input = binding.etSend.text?.toString().orEmpty()
         if (input.isBlank()) return false
         val data = buildSendBytes(input) ?: return false
-        // 发送前先把上一轮的接收提交为一行,让 TX/RX 交替显示
-        flushPendingRxLine()
+        // 不在此处强制刷行:避免打断未收完的响应分片(快速发送时产生乱码)
         if (ConnectionManager.send(data)) {
             // 定时发送也要回显 TX
             appendTxSent(data)
@@ -426,9 +427,8 @@ class ConsoleFragment : Fragment() {
         return false
     }
 
-    /** 发送回显:先把未提交的接收刷新为一行,再显示 TX */
+    /** 发送回显(TX 蓝色) */
     private fun appendTxSent(bytes: ByteArray) {
-        flushPendingRxLine()
         val tx = DisplayItem.Tx(bytes, System.currentTimeMillis(), txIsHex, txCharset.javaName)
         displayQueue.addLast(tx)
         while (displayQueue.size > 5000) displayQueue.removeFirst()

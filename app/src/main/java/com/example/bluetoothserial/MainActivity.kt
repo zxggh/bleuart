@@ -33,6 +33,11 @@ import com.example.bluetoothserial.ui.DeviceFragment
 import com.example.bluetoothserial.ui.ModbusFragment
 import com.example.bluetoothserial.ui.ModuleSettingsFragment
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -85,6 +90,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installCrashLogger()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -330,20 +336,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun downloadAndInstall(apkUrl: String) {
-        // Android 8.0+ 安装未知应用需授权
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
-            MaterialAlertDialogBuilder(this)
-                .setMessage(R.string.update_permission_msg)
-                .setPositiveButton(R.string.update_permission_goto) { _, _ ->
-                    startActivity(
-                        Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
-                    )
-                }
-                .setNegativeButton(R.string.cancel, null)
-                .show()
-            return
-        }
         try {
+            // Android 8.0+ 安装未知应用需授权
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                MaterialAlertDialogBuilder(this)
+                    .setMessage(R.string.update_permission_msg)
+                    .setPositiveButton(R.string.update_permission_goto) { _, _ -> openInstallPermissionSettings() }
+                    .setNegativeButton(R.string.cancel, null)
+                    .show()
+                return
+            }
             val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val req = DownloadManager.Request(Uri.parse(apkUrl))
                 .setTitle(getString(R.string.app_name) + " 更新")
@@ -353,8 +355,57 @@ class MainActivity : AppCompatActivity() {
                 .setDestinationInExternalFilesDir(this, null, "zxg-update.apk")
             downloadId = dm.enqueue(req)
             Toast.makeText(this, R.string.update_downloading, Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(
+                this,
+                getString(R.string.update_fail_detail, e.message ?: e.javaClass.simpleName),
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    /** 打开"安装未知应用"设置页;部分 ROM 无此入口,失败则降级到应用详情页 */
+    private fun openInstallPermissionSettings() {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+            )
         } catch (_: Exception) {
-            Toast.makeText(this, R.string.update_fail, Toast.LENGTH_LONG).show()
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+                )
+            } catch (_: Exception) {
+                Toast.makeText(this, R.string.update_permission_msg, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /**
+     * 全局崩溃日志:未捕获异常写入 getExternalFilesDir(null)/crash.txt,
+     * 便于用户反馈"三方应用异常"等闪退时直接取日志。同时保留默认处理器。
+     */
+    private fun installCrashLogger() {
+        try {
+            val prev = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+                try {
+                    val dir = getExternalFilesDir(null)
+                    if (dir != null) {
+                        val f = File(dir, "crash.txt")
+                        val sb = StringBuilder()
+                        sb.append("=== ").append(SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())).append(" ===\n")
+                        sb.append("thread: ").append(thread.name).append('\n')
+                        sb.append(android.util.Log.getStackTraceString(throwable)).append('\n')
+                        FileOutputStream(f, true).use { it.write(sb.toString().toByteArray(Charsets.UTF_8)) }
+                    }
+                } catch (_: Exception) {
+                    // 日志写入失败不影响后续处理
+                }
+                prev?.uncaughtException(thread, throwable)
+            }
+        } catch (_: Exception) {
+            // 安装失败则放弃,不影响正常流程
         }
     }
 

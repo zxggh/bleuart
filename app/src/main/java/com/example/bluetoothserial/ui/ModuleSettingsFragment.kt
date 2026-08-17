@@ -56,6 +56,8 @@ class ModuleSettingsFragment : Fragment() {
     private var pending = Pending.NONE
     private val replyBuffer = StringBuilder()
     private var timeoutJob: Job? = null
+    /** 以下值均来自模块回读(at+baud? / at+pari?),不取自设置栏 */
+    private var currentBaud: String? = null
     private var currentParity = "无校验"
 
     private val stateListener: (ConnState) -> Unit = { refreshStatus() }
@@ -170,9 +172,9 @@ class ModuleSettingsFragment : Fragment() {
             delay(REPLY_TIMEOUT_MS)
             if (pending == type) {
                 pending = Pending.NONE
-                // 回读步骤超时时也刷新一次显示,避免信息停留在旧值
+                // 回读超时:保持显示模块上次读到的值(不显示设置栏选择)
                 if (type == Pending.BAUD_QUERY || type == Pending.PARI_QUERY) {
-                    showUartInfo(currentParity, toast = false)
+                    showUartInfo(toast = false)
                 }
                 Toast.makeText(requireContext(), R.string.module_reply_timeout, Toast.LENGTH_SHORT).show()
             }
@@ -226,6 +228,7 @@ class ModuleSettingsFragment : Fragment() {
                 val value = line.substringAfter("=", "").trim()
                 val idx = value.toIntOrNull()
                 if (idx != null && idx in 0 until baudList.size) {
+                    currentBaud = baudList[idx].bps
                     binding.spBaud.setSelection(idx)
                 }
                 pending = Pending.NONE
@@ -233,15 +236,14 @@ class ModuleSettingsFragment : Fragment() {
             }
             Pending.PARI_QUERY -> {
                 val value = line.substringAfter("=", "").trim()
-                val parity = if (value == "1") "偶校验" else "无校验"
+                currentParity = if (value == "1") "偶校验" else "无校验"
                 pending = Pending.NONE
-                showUartInfo(parity)
+                showUartInfo()
             }
             Pending.BAUD_SET -> {
                 pending = Pending.NONE
                 Toast.makeText(requireContext(), R.string.module_baud_set_ok, Toast.LENGTH_SHORT).show()
-                // 立即用所选值刷新显示(无需等待模块),再自动回读确认
-                showUartInfo(currentParity, toast = false)
+                // 不直接显示设置栏的值,回读模块确认后再更新显示
                 sendAt("at+baud?", Pending.BAUD_QUERY)
             }
             Pending.CMD -> {
@@ -272,10 +274,10 @@ class ModuleSettingsFragment : Fragment() {
         }
     }
 
-    private fun showUartInfo(parity: String, toast: Boolean = true) {
-        currentParity = parity
-        val sel = binding.spBaud.selectedItemPosition.coerceIn(0, baudList.size - 1)
-        val info = "${baudList[sel].bps},8,1,$parity"
+    /** 显示模块回读的串口信息(波特率/校验位均来自 at+baud? / at+pari? 的回复) */
+    private fun showUartInfo(toast: Boolean = true) {
+        val baud = currentBaud ?: "未知"
+        val info = "$baud,8,1,$currentParity"
         val text = getString(R.string.module_uart_info_label) + "：" + info
         binding.tvModuleUartInfo.text = text
         if (toast) {
